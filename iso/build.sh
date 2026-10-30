@@ -27,6 +27,16 @@ BIN="$HERE/config/includes.chroot/usr/local/bin"
 install -m 0755 "$BUILD/zt" "$BUILD/zerotrace" "$BIN/"
 chmod 0755 "$BIN/zerotrace-kiosk" "$HERE/config/hooks/normal/"*.hook.chroot "$HERE/auto/"*
 
+# live-build's boot menus wait forever (isolinux "timeout 0", no GRUB timeout).
+# A kiosk should boot unattended, so override both with a 5 second timeout.
+DEFAULTS=/usr/share/live/build/bootloaders
+rm -rf "$HERE/config/bootloaders"
+mkdir -p "$HERE/config/bootloaders"
+cp -a "$DEFAULTS/isolinux" "$DEFAULTS/grub-pc" "$HERE/config/bootloaders/"
+sed -i 's/^timeout 0$/timeout 50/' "$HERE/config/bootloaders/isolinux/isolinux.cfg"
+sed -i '1i set timeout=5' "$HERE/config/bootloaders/grub-pc/config.cfg"
+grep -q '^timeout 50$' "$HERE/config/bootloaders/isolinux/isolinux.cfg" || { echo "isolinux timeout patch failed" >&2; exit 1; }
+
 cd "$HERE"
 lb clean
 lb config

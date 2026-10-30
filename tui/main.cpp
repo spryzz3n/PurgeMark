@@ -8,11 +8,14 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <iostream>
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -36,7 +39,45 @@ struct Options {
     std::string key_path;
     bool include_loop = false;  // list loop devices too, for testing without spare disks
     bool experimental = false;  // offer methods not yet validated on real hardware
+    bool kiosk = false;         // running as the live ISO's UI: offer power-off
+    bool ascii = false;         // ASCII symbols only
 };
+
+// The Linux text console's font has no ✓ ● ◉ ○ etc. (they render as the same
+// diamond, so a radio button's state becomes unreadable). Use ASCII there.
+struct Glyphs {
+    const char* ok;
+    const char* bad;
+    const char* warn;
+    const char* available;
+    const char* unavailable;
+    const char* radio_on;
+    const char* radio_off;
+};
+constexpr Glyphs kUnicode{"✓ ", "✗ ", "! ", "● ", "○ ", "◉ ", "○ "};
+constexpr Glyphs kAscii{"[ok] ", "[x] ", "[!] ", "* ", "- ", "(*) ", "( ) "};
+const Glyphs* g = &kUnicode;
+bool g_ascii = false;
+
+// Radiobox whose markers come from the active glyph set.
+Component Choice(std::vector<std::string>* labels, int* selected) {
+    RadioboxOption option;
+    option.transform = [](const EntryState& s) {
+        auto label = text(s.label);
+        if (s.active) label |= bold;
+        if (s.focused) label |= inverted;
+        return hbox({text(s.state ? g->radio_on : g->radio_off), label});
+    };
+    return Radiobox(labels, selected, option);
+}
+
+Element progress_bar(float fraction) {
+    if (!g_ascii) return gauge(fraction);
+    constexpr int kWidth = 60;
+    const int filled = static_cast<int>(fraction * kWidth);
+    return text("[" + std::string(static_cast<std::size_t>(filled), '#') +
+                std::string(static_cast<std::size_t>(kWidth - filled), '.') + "]");
+}
 
 std::string human_size(std::uint64_t bytes) {
     static constexpr const char* units[] = {"B", "KiB", "MiB", "GiB", "TiB", "PiB"};
@@ -94,6 +135,8 @@ public:
         return 0;
     }
 
+    bool power_off_requested() const { return power_off_; }
+
 private:
     enum Page { kList, kSetup, kProgress, kResult };
 
@@ -101,6 +144,8 @@ private:
     Options opts_;
     ScreenInteractive* screen_ = nullptr;
     int page_ = kList;
+    bool power_off_armed_ = false;  // kiosk: first 'p' arms, second 'p' powers off
+    bool power_off_ = false;
 
     std::vector<zt::ProbeResult> drives_;
     std::vector<std::string> drive_labels_;
@@ -165,11 +210,24 @@ private:
                                size(WIDTH, EQUAL, 64),
                            window(text(" Details "), vbox(std::move(detail))) | flex,
                        }) | flex,
-                       footer("↑/↓ select   Enter erase   r rescan   q quit"),
+                       power_off_armed_
+                           ? text(" Press p again to power off, any other key to cancel") | bold | color(Color::Yellow)
+                           : footer(opts_.kiosk ? "↑/↓ select   Enter erase   r rescan   p power off"
+                                                : "↑/↓ select   Enter erase   r rescan   q quit"),
                    }) |
                    flex;
         });
         return CatchEvent(view, [this](Event e) {
+            if (opts_.kiosk && e == Event::Character('p')) {
+                if (power_off_armed_) {
+                    power_off_ = true;
+                    screen_->Exit();
+                } else {
+                    power_off_armed_ = true;
+                }
+                return true;
+            }
+            if (power_off_armed_ && e.is_character()) power_off_armed_ = false;
             if (e == Event::Character('q')) {
                 screen_->Exit();
                 return true;
@@ -196,19 +254,20 @@ private:
             separator(),
         };
         if (r.blockers.empty()) {
-            el.push_back(text("✓ No blockers: this drive can be erased") | color(Color::GreenLight));
+            el.push_back(text(std::string(g->ok) + "No blockers: this drive can be erased") | color(Color::GreenLight));
         } else {
-            for (const auto& b : r.blockers) el.push_back(text("✗ " + b) | color(Color::RedLight));
+            for (const auto& b : r.blockers) el.push_back(text(g->bad + b) | color(Color::RedLight));
         }
         if (r.ata && r.ata->security_frozen) {
-            el.push_back(text("! Security-frozen: suspend and resume to unlock ATA erase") | color(Color::Yellow));
+            el.push_back(text(std::string(g->warn) + "Security-frozen: suspend and resume to unlock ATA erase") |
+                         color(Color::Yellow));
         }
         if (!r.identify_error.empty()) el.push_back(paragraph("identify: " + r.identify_error) | dim);
         el.push_back(separator());
         el.push_back(text("Erase methods, best first") | bold);
         for (const auto& m : r.methods) {
             auto row = hbox({
-                text(m.available ? "● " : "○ "),
+                text(m.available ? g->available : g->unavailable),
                 text(zt::to_string(m.method)) | size(WIDTH, EQUAL, 40),
                 text(zt::to_string(m.level)) | size(WIDTH, EQUAL, 7) |
                     color(m.level == zt::Level::Purge ? Color::GreenLight : Color::Yellow),
@@ -246,8 +305,8 @@ private:
 
     // --- screen 2: erase setup ---------------------------------------------------
     Component setup_screen() {
-        auto methods = Make<PassTab>(Radiobox(&method_labels_, &method_));
-        auto patterns = Maybe(Make<PassTab>(Radiobox(&pattern_labels_, &pattern_)), &show_pattern_);
+        auto methods = Make<PassTab>(Choice(&method_labels_, &method_));
+        auto patterns = Maybe(Make<PassTab>(Choice(&pattern_labels_, &pattern_)), &show_pattern_);
         auto op = Input(&operator_name_, "optional");
         auto confirm = Input(&confirm_text_, "type the serial shown above");
         auto erase = Button(" ERASE ", [this] { start_erase(); }, ButtonOption::Simple());
@@ -400,7 +459,7 @@ private:
                               vbox({
                                   text(verifying_ ? "Verifying: reading back sampled regions..."
                                                   : zt::to_string(running_method_) + "..."),
-                                  gauge(static_cast<float>(done / total)) | color(Color::Cyan),
+                                  progress_bar(static_cast<float>(done / total)) | color(Color::Cyan),
                                   text(stats),
                               })),
                        text(cancel_ ? "Cancelling..." : "") | color(Color::Yellow),
@@ -426,7 +485,9 @@ private:
             const auto& v = result_.verification;
             const bool ok = s.completed && v.passed() && cert_error_.empty();
             Elements el = {
-                text(ok ? "✓ Drive sanitized and verified" : "✗ Erase did not complete successfully") | bold |
+                text(ok ? std::string(g->ok) + "Drive sanitized and verified"
+                        : std::string(g->bad) + "Erase did not complete successfully") |
+                    bold |
                     color(ok ? Color::GreenLight : Color::RedLight),
                 separator(),
                 text("Method        " + zt::to_string(s.method) + " (NIST " + zt::to_string(s.level) + ")"),
@@ -480,8 +541,11 @@ int main(int argc, char** argv) {
         else if (a == "--key" && i + 1 < argc) opts.key_path = argv[++i];
         else if (a == "--include-loop") opts.include_loop = true;
         else if (a == "--experimental") opts.experimental = true;
+        else if (a == "--kiosk") opts.kiosk = true;
+        else if (a == "--ascii") opts.ascii = true;
         else {
-            std::cerr << "usage: zerotrace [--out DIR] [--key PRIVATE.pem] [--include-loop] [--experimental]\n";
+            std::cerr << "usage: zerotrace [--out DIR] [--key PRIVATE.pem] [--include-loop] [--experimental]\n"
+                         "                 [--kiosk] [--ascii]\n";
             return 2;
         }
     }
@@ -489,5 +553,17 @@ int main(int argc, char** argv) {
         std::cerr << "zerotrace needs root to query and erase drives.\n";
         return 1;
     }
-    return App(opts).run();
+
+    const char* term = std::getenv("TERM");
+    g_ascii = opts.ascii || (term && std::string_view(term) == "linux");
+    g = g_ascii ? &kAscii : &kUnicode;
+
+    App app(opts);
+    const int rc = app.run();
+    if (app.power_off_requested()) {
+        ::execl("/usr/bin/systemctl", "systemctl", "poweroff", static_cast<char*>(nullptr));
+        std::perror("systemctl poweroff");
+        return 1;
+    }
+    return rc;
 }

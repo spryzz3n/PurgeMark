@@ -2,9 +2,12 @@
 libssl3t64
 libstdc++6
 
-# Kiosk console
+# Kiosk console. systemd-logind needs D-Bus; without it no getty spawns on
+# other VTs and the ACPI power button is ignored (apt-recommends is off).
 kbd
 console-setup
+dbus
+libpam-systemd
 
 # Drive diagnostics for operators on tty2 (not used by ZeroTrace itself)
 nvme-cli

@@ -4,6 +4,8 @@ set -e
 
 # noswap:  never activate swap found on the drives we are about to erase.
 # nopersistence: the live system writes nothing back to any disk.
+# live-config.noautologin: live-config would otherwise auto-login a "user"
+#   account (which we don't create) on every VT, overriding our tty2 shell.
 lb config noauto \
   --distribution trixie \
   --architectures amd64 \
@@ -17,5 +19,5 @@ lb config noauto \
   --iso-application "ZeroTrace" \
   --iso-volume "ZEROTRACE" \
   --iso-publisher "ZeroTrace; https://github.com/" \
-  --bootappend-live "boot=live components quiet loglevel=3 noswap nopersistence" \
+  --bootappend-live "boot=live components quiet loglevel=3 noswap nopersistence live-config.noautologin live-config.hostname=zerotrace" \
   "${@}"

@@ -30,6 +30,6 @@ if [ "$OUT" = /run/zerotrace/certificates ]; then
 fi
 
 if [ -n "$KEY" ]; then
-    exec /usr/local/bin/zerotrace --out "$OUT" --key "$KEY"
+    exec /usr/local/bin/zerotrace --kiosk --out "$OUT" --key "$KEY"
 fi
-exec /usr/local/bin/zerotrace --out "$OUT"
+exec /usr/local/bin/zerotrace --kiosk --out "$OUT"

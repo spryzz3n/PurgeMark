@@ -2,7 +2,7 @@
 
 Verifiable storage sanitization for IT asset reuse: a bootable Linux ISO that erases drives, reads them back to prove it, and issues a signed certificate anyone can check.
 
-> **Status:** early development. Overwrite erase (NIST SP 800-88 *Clear*), verification, certificates, the terminal UI and the ISO configuration exist. Firmware sanitize (NVMe Sanitize/Format, ATA SANITIZE/Security Erase, the *Purge* methods) is detected but not executed yet. Don't point this at drives you care about.
+> **Status:** early development. Working and tested in VMs: overwrite and NVMe Format erase, verification, signed certificates, the terminal UI, and the live ISO (UEFI and legacy BIOS). NVMe Sanitize is implemented but experimental until it runs on real hardware; ATA SANITIZE/Security Erase are detected but not executed yet. Don't point this at drives you care about.
 
 ## Why
 
@@ -54,7 +54,7 @@ Testing without a spare disk: `zt erase --image disk.img` and `zerotrace --inclu
 
 ## Live ISO
 
-Debian 13 live image that boots straight into the terminal UI on tty1 (shell on tty2 for diagnostics). It never activates swap, mounts nothing automatically, and masks udisks/LVM/mdadm so target drives stay untouched.
+Debian 13 live image that boots unattended (UEFI or legacy BIOS) straight into the terminal UI on tty1, with a root shell on tty2 for diagnostics. It never activates swap, mounts nothing automatically, and masks udisks/LVM/mdadm so target drives stay untouched. On the text console the UI uses ASCII symbols; `p` twice powers off.
 
 Certificates go to a second USB stick labelled `ZT-CERTS`. If that stick holds an `operator.key`, it's used for signing. Without the stick, certificates live in RAM and the UI warns that they'll be lost at power-off.
 
