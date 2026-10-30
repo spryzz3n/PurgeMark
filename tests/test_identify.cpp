@@ -220,6 +220,90 @@ int main() {
         CHECK(zt::parse_nvme_sanitize_log(log).succeeded());
     }
 
+    // ATA PASS-THROUGH(16): IDENTIFY must encode exactly as the VM-tested original
+    {
+        zt::AtaTaskfile tf;
+        tf.command = 0xEC;
+        tf.count = 1;
+        tf.device = 0;
+        const auto cdb = zt::ata_pt16_cdb(tf, zt::AtaProtocol::PioDataIn, false);
+        const std::array<std::uint8_t, 16> want{0x85, 0x08, 0x0E, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0xEC, 0};
+        CHECK(cdb == want);
+    }
+
+    // SANITIZE CRYPTO SCRAMBLE EXT: 48-bit non-data, CK_COND, signature in the LBA,
+    // FAILURE MODE set so a failed sanitize can be cleared.
+    {
+        const auto tf = zt::ata_sanitize_taskfile(zt::AtaSanitizeAction::CryptoScramble);
+        CHECK(tf.command == 0xB4 && tf.features == 0x0011 && tf.extended);
+        CHECK((tf.count & 0x10) != 0);
+        const auto cdb = zt::ata_pt16_cdb(tf, zt::AtaProtocol::NonData, true);
+        CHECK(cdb[0] == 0x85 && cdb[1] == ((3 << 1) | 1) && cdb[2] == 0x20);
+        CHECK(cdb[4] == 0x11 && cdb[6] == 0x10 && cdb[14] == 0xB4);
+        // LBA bytes in PT(16) order: 31:24, 7:0, 39:32, 15:8, 47:40, 23:16 -> "Cryp" = 0x43727970
+        CHECK(cdb[7] == 0x43 && cdb[8] == 0x70 && cdb[10] == 0x79 && cdb[12] == 0x72);
+
+        const auto ow = zt::ata_sanitize_taskfile(zt::AtaSanitizeAction::Overwrite);
+        CHECK(ow.features == 0x0014 && ((ow.lba >> 32) & 0xFFFF) == 0x4F57 && (ow.count & 0x0F) == 1);
+        CHECK(zt::ata_sanitize_taskfile(zt::AtaSanitizeAction::BlockErase).lba == 0x426B4572);
+        CHECK(zt::ata_sanitize_status_taskfile(true).count == 1 && zt::ata_sanitize_status_taskfile(false).count == 0);
+    }
+
+    // ATA Status Return descriptor (descriptor-format sense) -> registers -> sanitize status
+    {
+        std::array<std::uint8_t, 22> sense{};
+        sense[0] = 0x72;
+        sense[1] = 0x01;  // RECOVERED ERROR: "ATA pass through information available"
+        sense[7] = 14;    // additional length
+        auto d = std::span(sense).subspan(8);
+        d[0] = 0x09;
+        d[1] = 0x0C;
+        d[2] = 0x01;          // EXTEND
+        d[4] = 0x40;          // COUNT(15:8): bit 14 = in progress
+        d[7] = 0x00;          // LBA(7:0)
+        d[9] = 0x80;          // LBA(15:8) -> progress 0x8000
+        d[13] = 0x50;         // STATUS: DRDY | DSC, no ERR
+        auto regs = zt::parse_ata_sense(sense);
+        CHECK(regs && regs->count == 0x4000 && (regs->lba & 0xFFFF) == 0x8000 && !regs->has_error());
+        auto st = zt::parse_ata_sanitize_status(*regs);
+        CHECK(st.in_progress && !st.completed_ok && st.progress == 0x8000);
+
+        d[4] = 0x80;  // bit 15: completed without error
+        d[9] = 0xFF;
+        d[7] = 0xFF;
+        st = zt::parse_ata_sanitize_status(*zt::parse_ata_sense(sense));
+        CHECK(st.completed_ok && !st.in_progress && !st.failed);
+
+        d[13] = 0x51;  // ERR: last sanitize failed
+        CHECK(zt::parse_ata_sanitize_status(*zt::parse_ata_sense(sense)).failed);
+    }
+
+    // Fixed-format sense: upper COUNT byte is lost, progress indicator is the fallback
+    {
+        std::array<std::uint8_t, 18> sense{};
+        sense[0] = 0x70;
+        sense[2] = 0x01;
+        sense[4] = 0x50;  // STATUS
+        sense[8] = 0x40;  // COUNT UPPER NONZERO
+        sense[9] = 0x00;
+        sense[10] = 0x20;  // progress 0x2000
+        auto regs = zt::parse_ata_sense(sense);
+        CHECK(regs && !regs->upper_bytes_known);
+        CHECK(zt::parse_ata_sanitize_status(*regs).in_progress);
+        sense[9] = 0xFF;
+        sense[10] = 0xFF;  // no operation running
+        CHECK(zt::parse_ata_sanitize_status(*zt::parse_ata_sense(sense)).completed_ok);
+        sense[8] = 0x00;  // nothing in the upper byte: not a success
+        CHECK(!zt::parse_ata_sanitize_status(*zt::parse_ata_sense(sense)).completed_ok);
+    }
+
+    // Garbage sense data never parses into registers
+    {
+        std::array<std::uint8_t, 8> junk{0x72, 0x05, 0x24, 0, 0, 0, 0, 40};  // length beyond buffer
+        CHECK(!zt::parse_ata_sense(junk));
+        CHECK(!zt::parse_ata_sense(std::span<const std::uint8_t>{}));
+    }
+
     // Method IDs round-trip, and support levels are as documented
     for (int i = 0; i <= static_cast<int>(zt::Method::Overwrite); ++i) {
         const auto m = static_cast<zt::Method>(i);
@@ -228,6 +312,7 @@ int main() {
     CHECK(!zt::method_from_id("rm-rf"));
     CHECK(zt::support(zt::Method::NvmeFormatCrypto) == zt::Support::Implemented);
     CHECK(zt::support(zt::Method::NvmeSanitizeCrypto) == zt::Support::Experimental);
+    CHECK(zt::support(zt::Method::AtaSanitizeBlock) == zt::Support::Experimental);
     CHECK(zt::support(zt::Method::AtaSecurityErase) == zt::Support::NotImplemented);
 
     // NVMe: empty data rejected

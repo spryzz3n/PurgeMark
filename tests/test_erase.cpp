@@ -182,6 +182,17 @@ static void test_run_erase_to_certificate(const fs::path& dir) {
     }
     CHECK(zt::run_erase(job).sanitization.level == zt::Level::Purge);  // level comes from the core, not the caller
 
+    // Untested methods with the opt-in still fail cleanly on a target they don't
+    // apply to, before touching it, and the image is left intact for other methods.
+    job.allow_experimental = true;
+    for (const auto m : {zt::Method::AtaSanitizeCrypto, zt::Method::AtaSanitizeOverwrite, zt::Method::NvmeSanitizeBlock}) {
+        job.method = m;
+        const auto r = zt::run_erase(job);
+        CHECK(!r.sanitization.completed && r.sanitization.error.find("does not apply") != std::string::npos);
+    }
+    job.method = zt::Method::Overwrite;
+    CHECK(zt::run_erase(job).verification.passed());  // overwrite still works afterwards
+
     job.method = zt::Method::Overwrite;
     job.target_path = (dir / "missing.img").string();
     const auto missing = zt::run_erase(job);

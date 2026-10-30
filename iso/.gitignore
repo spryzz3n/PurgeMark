@@ -19,3 +19,5 @@ config/bootloaders/
 # Binaries copied in at build time
 config/includes.chroot/usr/local/bin/zt
 config/includes.chroot/usr/local/bin/zerotrace
+*.modified_timestamps
+chroot.packages.*

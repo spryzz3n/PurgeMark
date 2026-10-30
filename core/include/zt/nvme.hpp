@@ -69,7 +69,7 @@ Result<std::uint32_t> nvme_namespace_id(const std::string& dev_path);  // NSID o
 
 // Destructive. `fd` must be an open (O_EXCL) handle on the namespace block device.
 Result<bool> nvme_format(int fd, std::uint32_t nsid, std::uint32_t cdw10);
-enum class SanitizeAction : std::uint8_t { BlockErase = 2, Overwrite = 3, CryptoErase = 4 };
+enum class SanitizeAction : std::uint8_t { ExitFailureMode = 1, BlockErase = 2, Overwrite = 3, CryptoErase = 4 };
 Result<bool> nvme_sanitize_start(int fd, SanitizeAction action);
 Result<NvmeSanitizeStatus> nvme_sanitize_status(int fd);
 

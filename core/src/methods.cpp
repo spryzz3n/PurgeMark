@@ -57,6 +57,9 @@ Support support(Method m) {
         case Method::NvmeSanitizeCrypto:
         case Method::NvmeSanitizeBlock:
         case Method::NvmeSanitizeOverwrite:
+        case Method::AtaSanitizeCrypto:
+        case Method::AtaSanitizeBlock:
+        case Method::AtaSanitizeOverwrite:
             return Support::Experimental;
         default:
             return Support::NotImplemented;

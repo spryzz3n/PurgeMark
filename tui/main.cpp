@@ -292,11 +292,18 @@ private:
             if (!c.available || !runnable(c.method)) continue;
             method_choices_.push_back(c.method);
             std::string label = zt::to_string(c.method) + "  [" + zt::to_string(c.level) + "]";
-            if (zt::support(c.method) == zt::Support::Experimental) label += "  (experimental)";
+            if (zt::support(c.method) == zt::Support::Experimental) label += "  (untested)";
             method_labels_.push_back(label);
         }
         if (method_choices_.empty()) return;
-        method_ = 0;  // ranked best first
+        // Preselect the best tested method; untested ones run only when picked on purpose.
+        method_ = 0;
+        for (std::size_t i = 0; i < method_choices_.size(); ++i) {
+            if (zt::support(method_choices_[i]) == zt::Support::Implemented) {
+                method_ = static_cast<int>(i);
+                break;
+            }
+        }
         operator_name_.clear();
         confirm_text_.clear();
         setup_error_.clear();
@@ -417,16 +424,24 @@ private:
 
         if (worker_.joinable()) worker_.join();
         worker_ = std::thread([this, job, key = *key, attestation, op = operator_name_] {
-            auto input = zt::run_erase(job);
-            input.operator_name = op;
-            const auto cert = zt::sign_certificate(zt::make_certificate_body(input), key, attestation);
+            zt::CertificateInput input;
             std::string path, error;
-            if (!cert) {
-                error = cert.error();
-            } else if (auto saved = zt::save_certificate(cert.value(), opts_.out_dir)) {
-                path = saved.value();
-            } else {
-                error = saved.error();
+            // An exception escaping a std::thread would terminate the whole kiosk.
+            try {
+                input = zt::run_erase(job);
+                input.operator_name = op;
+                const auto cert = zt::sign_certificate(zt::make_certificate_body(input), key, attestation);
+                if (!cert) {
+                    error = cert.error();
+                } else if (auto saved = zt::save_certificate(cert.value(), opts_.out_dir)) {
+                    path = saved.value();
+                } else {
+                    error = saved.error();
+                }
+            } catch (const std::exception& e) {
+                error = std::string("internal error: ") + e.what();
+            } catch (...) {
+                error = "internal error";
             }
             {
                 std::lock_guard lock(result_mu_);

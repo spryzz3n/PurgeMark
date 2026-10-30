@@ -29,7 +29,9 @@ if [ "$OUT" = /run/zerotrace/certificates ]; then
     [ "$answer" = r ] && exit 0  # systemd restarts us and we look again
 fi
 
+# --experimental lists the untested firmware sanitize methods (marked as such);
+# the UI still preselects a tested method.
 if [ -n "$KEY" ]; then
-    exec /usr/local/bin/zerotrace --kiosk --out "$OUT" --key "$KEY"
+    exec /usr/local/bin/zerotrace --kiosk --experimental --out "$OUT" --key "$KEY"
 fi
-exec /usr/local/bin/zerotrace --kiosk --out "$OUT"
+exec /usr/local/bin/zerotrace --kiosk --experimental --out "$OUT"

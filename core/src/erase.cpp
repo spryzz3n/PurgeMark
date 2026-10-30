@@ -7,6 +7,7 @@
 #include <cstring>
 #include <thread>
 
+#include "zt/ata.hpp"
 #include "zt/blockio.hpp"
 #include "zt/crypto.hpp"
 #include "zt/nvme.hpp"
@@ -21,6 +22,11 @@ SamplePlan make_plan(const Target& t, const EraseJob& job) {
     std::memcpy(&seed, seed_bytes.data(), sizeof seed);
     return plan_samples(t.size(), t.logical_block_size(), job.sample_bytes, job.verify_samples, seed);
 }
+
+// Sanitize can legitimately run for hours (overwrite on large HDDs); this only
+// stops a drive that never reports completion from hanging the UI forever.
+constexpr auto kSanitizeTimeout = std::chrono::hours(24);
+constexpr int kMaxStatusErrors = 5;  // consecutive failed status queries before giving up
 
 void report(const EraseJob& job, std::uint64_t done, std::uint64_t total) {
     if (job.progress) job.progress(done, total);
@@ -60,15 +66,64 @@ Result<bool> run_nvme(const Target& t, const EraseJob& job) {
                                                                             : SanitizeAction::Overwrite;
     if (auto r = nvme_sanitize_start(t.fd(), action); !r) return r;
     // Sanitize runs in the background on the drive; poll its status log.
-    for (;;) {
+    int status_errors = 0;
+    for (const auto deadline = std::chrono::steady_clock::now() + kSanitizeTimeout;;) {
         std::this_thread::sleep_for(std::chrono::seconds(1));
+        if (std::chrono::steady_clock::now() > deadline) {
+            return Result<bool>::fail("sanitize did not finish within 24 hours");
+        }
         const auto st = nvme_sanitize_status(t.fd());
-        if (!st) return Result<bool>::fail(st.error());
+        if (!st) {
+            if (++status_errors >= kMaxStatusErrors) return Result<bool>::fail(st.error());
+            continue;
+        }
+        status_errors = 0;
         if (!st->done()) {
             report(job, st->progress, 65536);
             continue;
         }
-        if (!st->succeeded()) return Result<bool>::fail("drive reports the sanitize operation failed");
+        if (!st->succeeded()) {
+            // AUSE was set, so the controller may leave the failed state on request
+            // rather than restricting the drive until a sanitize succeeds.
+            nvme_sanitize_start(t.fd(), SanitizeAction::ExitFailureMode);
+            return Result<bool>::fail("drive reports the sanitize operation failed");
+        }
+        report(job, 1, 1);
+        return Result<bool>::ok(true);
+    }
+}
+
+bool is_ata_method(Method m) {
+    return m == Method::AtaSanitizeCrypto || m == Method::AtaSanitizeBlock || m == Method::AtaSanitizeOverwrite;
+}
+
+// Issues ATA SANITIZE through SCSI/ATA Translation and waits for it to finish.
+Result<bool> run_ata(const Target& t, const EraseJob& job) {
+    const AtaSanitizeAction action = job.method == Method::AtaSanitizeCrypto  ? AtaSanitizeAction::CryptoScramble
+                                     : job.method == Method::AtaSanitizeBlock ? AtaSanitizeAction::BlockErase
+                                                                              : AtaSanitizeAction::Overwrite;
+    if (auto r = ata_sanitize_start(t.fd(), action); !r) return r;
+    int status_errors = 0;
+    for (const auto deadline = std::chrono::steady_clock::now() + kSanitizeTimeout;;) {
+        std::this_thread::sleep_for(std::chrono::seconds(2));
+        if (std::chrono::steady_clock::now() > deadline) {
+            return Result<bool>::fail("sanitize did not finish within 24 hours");
+        }
+        const auto st = ata_sanitize_status(t.fd());
+        if (!st) {
+            if (++status_errors >= kMaxStatusErrors) return Result<bool>::fail(st.error());
+            continue;
+        }
+        status_errors = 0;
+        if (st->in_progress) {
+            report(job, st->progress, 65536);
+            continue;
+        }
+        if (st->failed || !st->completed_ok) {
+            // FAILURE MODE was set: CLEAR lets the drive leave the failed state.
+            ata_sanitize_status(t.fd(), /*clear_failure=*/true);
+            return Result<bool>::fail("drive reports the sanitize operation failed");
+        }
         report(job, 1, 1);
         return Result<bool>::ok(true);
     }
@@ -85,7 +140,8 @@ void run_firmware(const EraseJob& job, CertificateInput& in) {
                     "it needs an explicit opt-in";
         return;
     }
-    if (!is_nvme_method(job.method) || in.device.bus != Bus::Nvme) {
+    const bool ata_bus = in.device.bus == Bus::Sata || in.device.bus == Bus::Usb || in.device.bus == Bus::Scsi;
+    if ((is_nvme_method(job.method) && in.device.bus != Bus::Nvme) || (is_ata_method(job.method) && !ata_bus)) {
         rec.error = to_string(job.method) + " does not apply to a " + to_string(in.device.bus) + " device";
         return;
     }
@@ -105,7 +161,7 @@ void run_firmware(const EraseJob& job, CertificateInput& in) {
         return;
     }
 
-    if (auto r = run_nvme(t, job); !r) {
+    if (auto r = is_ata_method(job.method) ? run_ata(t, job) : run_nvme(t, job); !r) {
         rec.error = r.error();
         return;
     }
@@ -152,8 +208,18 @@ CertificateInput run_erase(const EraseJob& job) {
     rec.level = nominal_level(job.method, !in.device.rotational);
     rec.started_at = utc_now_iso8601();
 
-    if (job.method == Method::Overwrite) run_overwrite(job, in);
-    else run_firmware(job, in);
+    // Any unexpected failure in a method ends up as a failed record, never as an
+    // exception escaping into the UI.
+    try {
+        if (job.method == Method::Overwrite) run_overwrite(job, in);
+        else run_firmware(job, in);
+    } catch (const std::exception& e) {
+        rec.completed = false;
+        rec.error = std::string("internal error: ") + e.what();
+    } catch (...) {
+        rec.completed = false;
+        rec.error = "internal error";
+    }
 
     if (rec.finished_at.empty()) rec.finished_at = utc_now_iso8601();
     return in;
