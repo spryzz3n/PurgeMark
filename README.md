@@ -1,96 +1,92 @@
 # ZeroTrace
 
-Verifiable storage sanitization for IT asset reuse: a bootable Linux ISO that erases drives, reads them back to prove it, and issues a signed certificate anyone can check.
+ZeroTrace wipes drives and then proves it. You boot a small Linux ISO, pick a disk, and it erases the disk using the drive's own sanitize commands where it can (falling back to an overwrite where it can't), reads the disk back to check the old data is really gone, and writes out a certificate signed with Ed25519 that anyone can verify later.
 
-> **Status:** early development. Working and tested in VMs: overwrite and NVMe Format erase, verification, signed certificates, the terminal UI, and the live ISO (UEFI and legacy BIOS). NVMe Sanitize is implemented but experimental until it runs on real hardware; ATA SANITIZE/Security Erase are detected but not executed yet. Don't point this at drives you care about.
+I started this for Smart India Hackathon 2025 (problem SIH25070, secure data wiping for IT asset recycling). That version didn't work, so this is a rewrite from scratch. [docs/history.md](docs/history.md) has the story.
 
-## Why
+![Drive list in the live ISO](docs/images/drive-list.png)
 
-People hoard old laptops and drives because they don't trust that wiping works. Free tools mostly overwrite, which can't reach the spare flash inside SSDs. Commercial tools are closed and licensed per drive. ZeroTrace aims to be open, standards-based, and honest about what its certificates prove.
+## Status
+
+Early, and not something to point at a disk you care about yet. What exists and has been tested in VMs:
+
+- the live ISO, booting on UEFI and legacy BIOS
+- software overwrite and NVMe Format, each followed by a read-back check
+- signed certificates, a command-line verifier and a browser verifier
+- refusing to touch disks that are mounted, used as swap, or part of LVM/RAID/LUKS
+
+Written but not yet run on real hardware: NVMe Sanitize and ATA SANITIZE. QEMU doesn't emulate either, so they're marked experimental. The UI lists them when a drive supports them but never picks them by default. ATA Security Erase isn't implemented, on purpose: if it fails halfway the drive can stay password-locked.
+
+An Android app for phones is planned and will come later.
 
 ## How it works
 
-```
-discover → safety checks → probe capabilities → erase → verify → sign certificate
-```
+1. **Find the disks.** Read sysfs, skip virtual devices, and work out which disks are in use. A mounted disk (including the USB stick the ISO booted from), active swap, or an LVM/RAID/dm holder all block the erase. The erase itself also opens the device with `O_EXCL`, which the kernel refuses if anything still holds it.
+2. **Ask the drive what it supports.** NVMe Identify through the admin ioctl, ATA IDENTIFY through SCSI/ATA translation (`SG_IO`). From that, rank the methods and label each with its NIST SP 800-88 level. Where the level depends on how the vendor implemented the command, I list it as Clear rather than Purge.
+3. **Erase.**
+   - Overwrite writes the whole disk once with an AES-256-CTR keystream, or zeros if you ask for them.
+   - Firmware methods hand the job to the drive.
+4. **Check.**
+   - After an overwrite, about 1000 random 64 KiB regions are read back with `O_DIRECT` (so the page cache can't fake a pass) and compared with the keystream. The keystream can be regenerated at any offset, which is why random data can still be checked.
+   - For firmware methods the expected contents aren't known in advance, so random "canaries" are written into the sampled regions first and every one of them has to be gone afterwards. That also catches a drive that reports success without erasing anything.
+5. **Sign.** The result goes into a JSON certificate. The signature covers the RFC 8785 canonical form, so reformatting the file doesn't break it. [docs/certificates.md](docs/certificates.md) explains the format and what a valid signature does and doesn't prove.
 
-- **Safety checks** refuse drives that are read-only, mounted (including the live USB itself), used as swap, or held by LVM/RAID/LUKS. The erase path also opens the disk with `O_EXCL`, which the kernel refuses while anything holds it, and asks the operator to type the drive's serial.
-- **Probing** talks to the drive directly: NVMe Identify Controller via the admin ioctl, and ATA IDENTIFY DEVICE through SCSI/ATA Translation (`SG_IO`, ATA PASS-THROUGH(16)). It reports which sanitize methods the drive supports and ranks them, conservatively labelling vendor-dependent ones as *Clear*.
-- **Overwrite** writes the whole drive once, with zeros or with an AES-256-CTR keystream. Random data defeats controllers that compress zeros, and because the keystream is addressable by offset, verification can recompute the expected bytes anywhere.
-- **Verification** reads back ~1000 reproducible random samples (always including the first and last regions) with `O_DIRECT`, so the page cache can't fake a pass. For firmware methods it will compare before/after fingerprints instead.
-- **Certificates** are JSON signed with Ed25519 over the [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785) canonical form, so pretty-printing or reordering keys doesn't break them.
+More detail is in [docs/design.md](docs/design.md).
 
-| Media | Preferred method | Fallback |
-|---|---|---|
-| NVMe | Sanitize (crypto/block erase), Format with SES=2 | overwrite |
-| SATA | ATA SANITIZE (crypto scramble/block erase) | ATA Security Erase, overwrite |
-| SAS/SCSI | SCSI SANITIZE | overwrite |
-| USB / other | — | overwrite |
+## Using it
 
-## What a certificate proves
+On the live ISO everything happens in the terminal UI on tty1. To keep certificates after power-off, plug in a second USB stick labelled `ZT-CERTS` (FAT32 or exFAT). If it holds an `operator.key`, that key is used to sign. Without the stick the certificates stay in RAM and the UI warns you about it. Press `p` twice to power off. Ctrl+Alt+F2 gives you a root shell.
 
-A valid signature proves the certificate hasn't changed since it was issued. Who issued it depends on the key:
+![Confirming an erase](docs/images/confirm-erase.png)
 
-- **operator key** (`zt keygen`, then `--key`): verifiers pin the operator's public key with `--trusted-key` and know who signed.
-- **self-attested** (no key given): a one-off key. It proves integrity, not identity. The certificate says so.
-
-No signing key ships inside the ISO. Anyone could extract it and forge certificates.
-
-## Usage
+The same pieces work from the command line on any Linux box:
 
 ```sh
-zt list                                  # disks and why each one is blocked
-sudo zt probe                            # supported sanitize methods per drive
-zt keygen ~/operator                     # operator.key (keep offline) + operator.pub
-sudo zt erase sdb --key ~/operator.key --operator "Name" --out certs/
+zt list                                    # disks, and why each one is blocked
+sudo zt probe                              # what each drive supports
+zt keygen ~/operator                       # operator.key (keep it safe) + operator.pub
+sudo zt erase sdb --key ~/operator.key --operator "Your Name" --out certs/
 zt verify-cert certs/zerotrace-*.json --trusted-key ~/operator.pub
-
-sudo zerotrace                           # full-screen terminal UI (what the ISO runs)
+sudo zerotrace                             # the terminal UI
 ```
 
-Testing without a spare disk: `zt erase --image disk.img` and `zerotrace --include-loop` work on image files and loop devices.
+`zt erase` picks the best tested method by default. `--method` chooses one explicitly, and the untested ones also need `--experimental`. To try it without a spare disk, `zt erase --image disk.img` works on an image file or a loop device.
 
-**Web verifier:** open [`verifier/index.html`](verifier/index.html) (works offline from disk) and drop a certificate on it. Verification runs locally with Web Crypto.
+To check a certificate without installing anything, open [verifier/index.html](verifier/index.html) in a browser and drop the file on it. It runs offline, and nothing gets uploaded.
 
-## Live ISO
+## Building
 
-Debian 13 live image that boots unattended (UEFI or legacy BIOS) straight into the terminal UI on tty1, with a root shell on tty2 for diagnostics. It never activates swap, mounts nothing automatically, and masks udisks/LVM/mdadm so target drives stay untouched. On the text console the UI uses ASCII symbols; `p` twice powers off.
-
-Certificates go to a second USB stick labelled `ZT-CERTS`. If that stick holds an `operator.key`, it's used for signing. Without the stick, certificates live in RAM and the UI warns that they'll be lost at power-off.
+Linux only. You need a C++20 compiler, CMake 3.25+, OpenSSL 3 and nlohmann-json. FTXUI is used from the system if it's installed, otherwise CMake downloads v5.0.0.
 
 ```sh
-# on a Debian 13 host
+cmake -S . -B build -G Ninja
+cmake --build build
+ctest --test-dir build
+node verifier/test.js
+```
+
+The ISO needs a Debian 13 machine with live-build:
+
+```sh
 sudo apt install live-build cmake ninja-build g++ git libssl-dev nlohmann-json3-dev
 sudo iso/build.sh
 ```
 
-## Build and test
-
-Linux only. C++20, CMake ≥ 3.25, OpenSSL 3, nlohmann-json. FTXUI comes from the system or is fetched (v5.0.0).
-
-```sh
-cmake -S . -B build -G Ninja && cmake --build build
-ctest --test-dir build        # sysfs fixtures, synthetic IDENTIFY data, crypto, erase on image files
-node verifier/test.js         # certificates signed by the C++ tool must verify in JavaScript
-```
+That builds the binaries, drops them into the image and produces `iso/live-image-amd64.hybrid.iso`. [docs/testing.md](docs/testing.md) describes how I tested it on Proxmox, including the destructive integration test in `tests/integration/`.
 
 ## Layout
 
 ```
-core/      libztcore: discovery, safety, NVMe/ATA identify, method ranking,
-           block I/O, overwrite, verification, canonical JSON, certificates
-cli/       zt command-line tool
-tui/       zerotrace terminal UI (FTXUI)
-verifier/  static web verifier + cross-implementation test
-iso/       Debian live-build configuration and kiosk service
-tests/     unit tests
-docs/      design notes and project history
+core/      the library: discovery, safety checks, NVMe/ATA commands, erase,
+           verification, canonical JSON, certificates
+cli/       the zt command
+tui/       the zerotrace terminal UI
+verifier/  browser verifier and its cross-implementation test
+iso/       live-build config, kiosk service, boot settings
+tests/     unit tests, plus the destructive integration test
+docs/      design notes, certificate format, testing, history
 ```
-
-## History
-
-ZeroTrace started as Team CYBROS's Smart India Hackathon 2025 entry (problem SIH25070). This repository is a ground-up rewrite. [docs/history.md](docs/history.md) covers what the prototype got wrong and what changed.
 
 ## License
 
-GPL-3.0-or-later. See [LICENSE](LICENSE).
+GPL-3.0. Copyright (C) 2026 spryzz3n.
