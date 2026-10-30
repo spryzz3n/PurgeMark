@@ -1,0 +1,19 @@
+# live-build working state and outputs
+.build/
+cache/
+chroot/
+binary/
+config/binary
+config/bootstrap
+config/chroot
+config/common
+config/source
+*.iso
+*.iso.sha256
+*.contents
+*.files
+*.packages
+build.log
+# Binaries copied in at build time
+config/includes.chroot/usr/local/bin/zt
+config/includes.chroot/usr/local/bin/zerotrace

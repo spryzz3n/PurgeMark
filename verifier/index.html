@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ZeroTrace Verifier</title>
+<meta name="description" content="Check a ZeroTrace sanitization certificate's signature locally in your browser.">
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --text: #16181d; --muted: #5d6573; --line: #dde1e7;
+    --accent: #2457d6; --ok: #137a3f; --ok-bg: #e7f5ec; --warn: #8a5a00; --warn-bg: #fdf3dc;
+    --bad: #b42318; --bad-bg: #fdecea;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1115; --panel: #171a21; --text: #e7e9ee; --muted: #9aa3b2; --line: #2a2f3a;
+      --accent: #7aa2ff; --ok: #5fd28c; --ok-bg: #12291c; --warn: #f2c25b; --warn-bg: #2d2412;
+      --bad: #ff7b6e; --bad-bg: #2f1513;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .lede { color: var(--muted); margin: 0 0 24px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px; margin-bottom: 16px; }
+  label { display: block; font-weight: 600; margin-bottom: 6px; }
+  .hint { color: var(--muted); font-size: 13px; font-weight: 400; }
+  .drop { border: 2px dashed var(--line); border-radius: 8px; padding: 26px; text-align: center; cursor: pointer; }
+  .drop.over { border-color: var(--accent); }
+  .drop strong { color: var(--accent); }
+  input[type=file] { display: none; }
+  textarea { width: 100%; min-height: 92px; font: 12px/1.4 ui-monospace, Consolas, monospace; padding: 8px;
+             border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); }
+  .status { border-radius: 8px; padding: 12px 14px; font-weight: 600; margin-bottom: 14px; }
+  .status.ok { background: var(--ok-bg); color: var(--ok); }
+  .status.warn { background: var(--warn-bg); color: var(--warn); }
+  .status.bad { background: var(--bad-bg); color: var(--bad); }
+  .status small { display: block; font-weight: 400; margin-top: 2px; }
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; }
+  dt { color: var(--muted); }
+  dd { margin: 0; overflow-wrap: anywhere; }
+  code { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+  footer { color: var(--muted); font-size: 13px; }
+  @media (max-width: 520px) { dl { grid-template-columns: 1fr; } dt { margin-top: 6px; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>ZeroTrace certificate verifier</h1>
+  <p class="lede">Checks a sanitization certificate's Ed25519 signature. Everything runs in this page; nothing is uploaded.</p>
+
+  <div class="panel">
+    <label for="cert-file">Certificate <span class="hint">(zerotrace-….json)</span></label>
+    <div class="drop" id="drop" tabindex="0" role="button">Drop the certificate here or <strong>choose a file</strong></div>
+    <input type="file" id="cert-file" accept=".json,application/json">
+  </div>
+
+  <div class="panel">
+    <label for="trusted">Trusted public key <span class="hint">(optional: the operator's .pub file, to confirm who signed it)</span></label>
+    <textarea id="trusted" placeholder="-----BEGIN PUBLIC KEY-----&#10;…&#10;-----END PUBLIC KEY-----"></textarea>
+  </div>
+
+  <div class="panel" id="result" hidden></div>
+
+  <footer>
+    A valid signature proves the certificate wasn't changed after it was issued. It proves <em>who</em> issued it only
+    when the signer matches a public key you already trust; certificates marked <code>self-attested</code> were signed
+    with a one-off key.
+  </footer>
+</main>
+
+<script src="zt-verify.js"></script>
+<script>
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  let lastCert = null;
+
+  function esc(s) {
+    return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+
+  function row(label, value) {
+    return value === undefined || value === "" ? "" : `<dt>${esc(label)}</dt><dd>${esc(value)}</dd>`;
+  }
+
+  function size(bytes) {
+    if (typeof bytes !== "number") return "";
+    const u = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"];
+    let v = bytes, i = 0;
+    while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+    return `${i ? v.toFixed(1) : v} ${u[i]}`;
+  }
+
+  async function render() {
+    if (!lastCert) return;
+    const box = $("result");
+    box.hidden = false;
+
+    let trusted = null, keyError = "";
+    const pem = $("trusted").value.trim();
+    if (pem) {
+      try { trusted = ZTVerify.parsePublicKeyPem(pem); } catch (e) { keyError = e.message; }
+    }
+
+    const r = await ZTVerify.verifyCertificate(lastCert, trusted);
+    const c = lastCert;
+    let status;
+    if (!r.valid) {
+      status = `<div class="status bad">Invalid certificate<small>${esc(r.error)}</small></div>`;
+    } else if (keyError) {
+      status = `<div class="status warn">Signature valid, but the trusted key couldn't be read<small>${esc(keyError)}</small></div>`;
+    } else if (trusted && !r.trusted) {
+      status = `<div class="status bad">Signature valid, but NOT signed by the trusted key<small>Signer key ${esc(r.keyId)}</small></div>`;
+    } else if (c.result !== "sanitized") {
+      status = `<div class="status bad">Authentic certificate of a FAILED erase<small>${esc(c.sanitization?.error || "verification did not pass")}</small></div>`;
+    } else if (r.trusted) {
+      status = `<div class="status ok">Authentic, signed by the trusted key<small>Key ${esc(r.keyId)}</small></div>`;
+    } else {
+      status = `<div class="status warn">Signature valid; signer not checked<small>Key ${esc(r.keyId)} (${esc(r.attestation)}). Add the operator's public key above to confirm who signed it.</small></div>`;
+    }
+
+    if (!r.valid) { box.innerHTML = status; return; }
+    const d = c.device || {}, s = c.sanitization || {}, v = c.verification || {}, o = c.operator || {};
+    box.innerHTML = status + `<dl>
+      ${row("Result", c.result)}
+      ${row("Device", [d.model, size(d.capacity_bytes)].filter(Boolean).join(", "))}
+      ${row("Serial", d.serial)}
+      ${row("Bus / media", [d.bus, d.media].filter(Boolean).join(" / "))}
+      ${row("Method", `${s.method_name || s.method} (NIST ${s.nist_level})`)}
+      ${row("Pattern", s.pattern)}
+      ${row("Erased", s.started_at && `${s.started_at} → ${s.finished_at}`)}
+      ${row("Verification", `${v.passed ? "passed" : "FAILED"}: ${v.samples} samples, ${size(v.bytes_checked)} read back, ${v.mismatches} mismatches`)}
+      ${row("Operator", [o.name, o.organization].filter(Boolean).join(", "))}
+      ${row("Issued", c.issued_at)}
+      ${row("Certificate ID", c.certificate_id)}
+      ${row("Tool", c.tool && `${c.tool.name} ${c.tool.version}`)}
+    </dl>`;
+  }
+
+  async function load(file) {
+    try {
+      lastCert = JSON.parse(await file.text());
+    } catch {
+      lastCert = null;
+      $("result").hidden = false;
+      $("result").innerHTML = `<div class="status bad">Not a JSON file</div>`;
+      return;
+    }
+    render();
+  }
+
+  const drop = $("drop");
+  drop.addEventListener("click", () => $("cert-file").click());
+  drop.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("cert-file").click(); } });
+  drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
+  drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+  drop.addEventListener("drop", (e) => { e.preventDefault(); drop.classList.remove("over"); if (e.dataTransfer.files[0]) load(e.dataTransfer.files[0]); });
+  $("cert-file").addEventListener("change", (e) => { if (e.target.files[0]) load(e.target.files[0]); });
+  $("trusted").addEventListener("input", render);
+
+  if (!globalThis.crypto?.subtle) {
+    $("result").hidden = false;
+    $("result").innerHTML = `<div class="status bad">This browser has no Web Crypto here. Open the page over https or from a local file in a current browser.</div>`;
+  }
+</script>
+</body>
+</html>

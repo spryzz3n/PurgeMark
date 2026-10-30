@@ -1,0 +1,38 @@
+#!/bin/sh
+# Builds the ZeroTrace live ISO. Run as root on a Debian 13 (trixie) host:
+#
+#   sudo apt install live-build cmake ninja-build g++ git libssl-dev nlohmann-json3-dev
+#   sudo iso/build.sh
+#
+# The binaries are compiled on the host (same Debian release as the image, so
+# the shared libraries match) and copied into the image.
+set -e
+
+HERE=$(cd "$(dirname "$0")" && pwd)
+ROOT=$(dirname "$HERE")
+BUILD="$ROOT/build-iso"
+
+if [ "$(id -u)" -ne 0 ]; then
+    echo "iso/build.sh must run as root (live-build needs it)" >&2
+    exit 1
+fi
+if ! grep -q 'VERSION_CODENAME=trixie' /etc/os-release; then
+    echo "warning: not a Debian trixie host; binaries may not match the image's libraries" >&2
+fi
+
+cmake -S "$ROOT" -B "$BUILD" -G Ninja -DCMAKE_BUILD_TYPE=Release -DZT_BUILD_TESTS=OFF
+cmake --build "$BUILD"
+
+BIN="$HERE/config/includes.chroot/usr/local/bin"
+install -m 0755 "$BUILD/zt" "$BUILD/zerotrace" "$BIN/"
+chmod 0755 "$BIN/zerotrace-kiosk" "$HERE/config/hooks/normal/"*.hook.chroot "$HERE/auto/"*
+
+cd "$HERE"
+lb clean
+lb config
+lb build
+
+ISO=$(ls -t "$HERE"/*.iso 2>/dev/null | head -n1)
+[ -n "$ISO" ] || { echo "no ISO produced; see iso/build.log" >&2; exit 1; }
+sha256sum "$ISO" | tee "$ISO.sha256"
+echo "built: $ISO"

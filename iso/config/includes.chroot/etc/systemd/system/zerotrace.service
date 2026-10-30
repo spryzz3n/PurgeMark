@@ -1,0 +1,22 @@
+[Unit]
+Description=ZeroTrace drive sanitization kiosk
+After=systemd-udev-settle.service systemd-user-sessions.service
+Wants=systemd-udev-settle.service
+Conflicts=getty@tty1.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/zerotrace-kiosk
+StandardInput=tty
+StandardOutput=tty
+StandardError=journal
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+Environment=TERM=linux
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target

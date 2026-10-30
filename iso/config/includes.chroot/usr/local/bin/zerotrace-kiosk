@@ -1,0 +1,35 @@
+#!/bin/sh
+# Launches the ZeroTrace TUI on tty1.
+#
+# Certificates must outlive the live session, so they go to a separate USB
+# stick labelled ZT-CERTS (FAT32 or exFAT). An operator signing key on that
+# stick (operator.key, from `zt keygen`) is used automatically. Being mounted
+# also makes the stick show as "in use", so it can't be erased by mistake.
+
+CERTS_DEV=$(blkid -L ZT-CERTS 2>/dev/null || true)
+MNT=/mnt/zt-certs
+OUT=/run/zerotrace/certificates
+KEY=
+
+if [ -n "$CERTS_DEV" ]; then
+    mkdir -p "$MNT"
+    if mountpoint -q "$MNT" || mount "$CERTS_DEV" "$MNT"; then
+        OUT="$MNT/certificates"
+        [ -f "$MNT/operator.key" ] && KEY="$MNT/operator.key"
+    fi
+fi
+mkdir -p "$OUT"
+
+clear
+if [ "$OUT" = /run/zerotrace/certificates ]; then
+    printf '\n  No USB stick labelled ZT-CERTS found.\n'
+    printf '  Certificates will be kept in RAM and LOST at power-off.\n\n'
+    printf '  Insert one and press r to rescan, or press Enter to continue anyway.\n'
+    read -r answer
+    [ "$answer" = r ] && exit 0  # systemd restarts us and we look again
+fi
+
+if [ -n "$KEY" ]; then
+    exec /usr/local/bin/zerotrace --out "$OUT" --key "$KEY"
+fi
+exec /usr/local/bin/zerotrace --out "$OUT"

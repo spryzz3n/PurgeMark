@@ -1,0 +1,20 @@
+# Runtime for zt / zerotrace (built on the host and copied in by iso/build.sh)
+libssl3t64
+libstdc++6
+
+# Kiosk console
+kbd
+console-setup
+
+# Drive diagnostics for operators on tty2 (not used by ZeroTrace itself)
+nvme-cli
+hdparm
+sg3-utils
+smartmontools
+pciutils
+usbutils
+
+# Mounting the ZT-CERTS stick (FAT/exFAT)
+dosfstools
+exfatprogs
+util-linux

@@ -1,0 +1,49 @@
+{
+  "certificate_id": "14355a1b-379b-4edb-bf4f-8f228826374d",
+  "device": {
+    "bus": "unknown",
+    "capacity_bytes": 4194304,
+    "firmware": "",
+    "media": "ssd",
+    "model": "disk image",
+    "serial": "image:disk.img"
+  },
+  "issued_at": "2026-10-30T18:18:33Z",
+  "operator": {
+    "name": "Ádám Kovács — परीक्षण 𠀀 \"quoted\"",
+    "organization": "Example Recyclers"
+  },
+  "result": "sanitized",
+  "sanitization": {
+    "bytes_written": 4194304,
+    "completed": true,
+    "finished_at": "2026-10-30T18:18:33Z",
+    "method": "overwrite",
+    "method_name": "Software overwrite",
+    "nist_level": "Clear",
+    "pattern": "random (AES-256-CTR keystream)",
+    "standard": "NIST SP 800-88",
+    "started_at": "2026-10-30T18:18:33Z"
+  },
+  "schema": "zerotrace.certificate/v1",
+  "signature": "yaRt199xuIC7CZkJiHYQ2w1ZmyW7hsRrgXdjMyDiZlWCDrVW6T5CmdvtsgNur9gpXRKDoy5fvmrRrk0ymgwtCQ==",
+  "signer": {
+    "algorithm": "Ed25519",
+    "attestation": "operator-key",
+    "key_id": "43a9d5a13ff0e99c",
+    "public_key": "Zvxh86sywv6KgHEaQ8/U8zun2KpCwuSzgBCFZpKDcf8="
+  },
+  "tool": {
+    "name": "zerotrace",
+    "version": "0.1.0"
+  },
+  "verification": {
+    "bytes_checked": 4194304,
+    "mismatches": 0,
+    "mode": "pattern",
+    "passed": true,
+    "sample_bytes": 65536,
+    "sample_seed": "14895951545037260751",
+    "samples": 64
+  }
+}

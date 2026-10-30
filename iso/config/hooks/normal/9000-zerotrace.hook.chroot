@@ -1,0 +1,15 @@
+#!/bin/sh
+# Runs inside the chroot while the image is built.
+set -e
+
+chmod 0755 /usr/local/bin/zt /usr/local/bin/zerotrace /usr/local/bin/zerotrace-kiosk
+systemctl enable zerotrace.service
+
+# Nothing in the live system may touch the target drives on its own.
+systemctl mask udisks2.service 2>/dev/null || true
+for unit in lvm2-monitor.service mdmonitor.service; do
+    systemctl mask "$unit" 2>/dev/null || true
+done
+
+# Login banner on the debug consoles (tty2+).
+printf 'ZeroTrace live: the sanitization UI runs on tty1 (Alt+F1)\n\n' > /etc/issue

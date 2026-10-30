@@ -1,49 +1,96 @@
 # ZeroTrace
 
-Verifiable storage sanitization for IT asset reuse: a bootable Linux ISO that purges drives using their own firmware sanitize commands, checks the result, and issues a signed certificate that anyone can verify.
+Verifiable storage sanitization for IT asset reuse: a bootable Linux ISO that erases drives, reads them back to prove it, and issues a signed certificate anyone can check.
 
-> **Status:** early development. Everything so far is read-only: device discovery, safety checks, and capability probing. Nothing erases yet.
-
-```
-zt list               # disks, with why each one is blocked (mounted, swap, LVM/RAID, read-only)
-sudo zt probe         # NVMe Identify / ATA IDENTIFY → supported sanitize methods, ranked
-```
+> **Status:** early development. Overwrite erase (NIST SP 800-88 *Clear*), verification, certificates, the terminal UI and the ISO configuration exist. Firmware sanitize (NVMe Sanitize/Format, ATA SANITIZE/Security Erase, the *Purge* methods) is detected but not executed yet. Don't point this at drives you care about.
 
 ## Why
 
-People hoard old laptops and drives because they don't trust that wiping works. Free tools mostly overwrite, which is the wrong technique for SSDs. Commercial tools are closed and licensed per drive. ZeroTrace aims to be open, standards-based (NIST SP 800-88, IEEE 2883), and honest about what its certificates prove.
+People hoard old laptops and drives because they don't trust that wiping works. Free tools mostly overwrite, which can't reach the spare flash inside SSDs. Commercial tools are closed and licensed per drive. ZeroTrace aims to be open, standards-based, and honest about what its certificates prove.
 
-## Planned pipeline
+## How it works
 
 ```
-discover → probe capabilities → plan method → sanitize → verify → report → sign
+discover → safety checks → probe capabilities → erase → verify → sign certificate
 ```
+
+- **Safety checks** refuse drives that are read-only, mounted (including the live USB itself), used as swap, or held by LVM/RAID/LUKS. The erase path also opens the disk with `O_EXCL`, which the kernel refuses while anything holds it, and asks the operator to type the drive's serial.
+- **Probing** talks to the drive directly: NVMe Identify Controller via the admin ioctl, and ATA IDENTIFY DEVICE through SCSI/ATA Translation (`SG_IO`, ATA PASS-THROUGH(16)). It reports which sanitize methods the drive supports and ranks them, conservatively labelling vendor-dependent ones as *Clear*.
+- **Overwrite** writes the whole drive once, with zeros or with an AES-256-CTR keystream. Random data defeats controllers that compress zeros, and because the keystream is addressable by offset, verification can recompute the expected bytes anywhere.
+- **Verification** reads back ~1000 reproducible random samples (always including the first and last regions) with `O_DIRECT`, so the page cache can't fake a pass. For firmware methods it will compare before/after fingerprints instead.
+- **Certificates** are JSON signed with Ed25519 over the [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785) canonical form, so pretty-printing or reordering keys doesn't break them.
 
 | Media | Preferred method | Fallback |
 |---|---|---|
-| NVMe | Sanitize (crypto erase / block erase), Format with SES=2 | Format SES=1, overwrite |
-| SATA | ATA SANITIZE (crypto scramble / block erase) | ATA Security Erase (enhanced), overwrite |
+| NVMe | Sanitize (crypto/block erase), Format with SES=2 | overwrite |
+| SATA | ATA SANITIZE (crypto scramble/block erase) | ATA Security Erase, overwrite |
 | SAS/SCSI | SCSI SANITIZE | overwrite |
-| USB / other | — | overwrite (Clear only) |
+| USB / other | — | overwrite |
 
-## Build
+## What a certificate proves
 
-Linux only, C++20, CMake ≥ 3.20.
+A valid signature proves the certificate hasn't changed since it was issued. Who issued it depends on the key:
+
+- **operator key** (`zt keygen`, then `--key`): verifiers pin the operator's public key with `--trusted-key` and know who signed.
+- **self-attested** (no key given): a one-off key. It proves integrity, not identity. The certificate says so.
+
+No signing key ships inside the ISO. Anyone could extract it and forge certificates.
+
+## Usage
 
 ```sh
-cmake -S . -B build && cmake --build build
-ctest --test-dir build
-./build/zt list
+zt list                                  # disks and why each one is blocked
+sudo zt probe                            # supported sanitize methods per drive
+zt keygen ~/operator                     # operator.key (keep offline) + operator.pub
+sudo zt erase sdb --key ~/operator.key --operator "Name" --out certs/
+zt verify-cert certs/zerotrace-*.json --trusted-key ~/operator.pub
+
+sudo zerotrace                           # full-screen terminal UI (what the ISO runs)
+```
+
+Testing without a spare disk: `zt erase --image disk.img` and `zerotrace --include-loop` work on image files and loop devices.
+
+**Web verifier:** open [`verifier/index.html`](verifier/index.html) (works offline from disk) and drop a certificate on it. Verification runs locally with Web Crypto.
+
+## Live ISO
+
+Debian 13 live image that boots straight into the terminal UI on tty1 (shell on tty2 for diagnostics). It never activates swap, mounts nothing automatically, and masks udisks/LVM/mdadm so target drives stay untouched.
+
+Certificates go to a second USB stick labelled `ZT-CERTS`. If that stick holds an `operator.key`, it's used for signing. Without the stick, certificates live in RAM and the UI warns that they'll be lost at power-off.
+
+```sh
+# on a Debian 13 host
+sudo apt install live-build cmake ninja-build g++ git libssl-dev nlohmann-json3-dev
+sudo iso/build.sh
+```
+
+## Build and test
+
+Linux only. C++20, CMake ≥ 3.25, OpenSSL 3, nlohmann-json. FTXUI comes from the system or is fetched (v5.0.0).
+
+```sh
+cmake -S . -B build -G Ninja && cmake --build build
+ctest --test-dir build        # sysfs fixtures, synthetic IDENTIFY data, crypto, erase on image files
+node verifier/test.js         # certificates signed by the C++ tool must verify in JavaScript
 ```
 
 ## Layout
 
 ```
-core/     libztcore: discovery, safety checks, NVMe/ATA identify, method ranking
-cli/      zt command-line tool
-tests/    unit tests: fake sysfs tree, synthetic IDENTIFY buffers
+core/      libztcore: discovery, safety, NVMe/ATA identify, method ranking,
+           block I/O, overwrite, verification, canonical JSON, certificates
+cli/       zt command-line tool
+tui/       zerotrace terminal UI (FTXUI)
+verifier/  static web verifier + cross-implementation test
+iso/       Debian live-build configuration and kiosk service
+tests/     unit tests
+docs/      design notes and project history
 ```
 
 ## History
 
-ZeroTrace started as Team CYBROS's Smart India Hackathon 2025 entry (problem SIH25070). This repository is a ground-up rewrite. See [docs/history.md](docs/history.md) for what the prototype got wrong and what changed.
+ZeroTrace started as Team CYBROS's Smart India Hackathon 2025 entry (problem SIH25070). This repository is a ground-up rewrite. [docs/history.md](docs/history.md) covers what the prototype got wrong and what changed.
+
+## License
+
+GPL-3.0-or-later. See [LICENSE](LICENSE).
