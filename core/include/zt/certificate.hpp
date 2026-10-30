@@ -60,6 +60,10 @@ struct CertificateCheck {
 CertificateCheck verify_certificate(const nlohmann::json& cert,
                                     const std::optional<std::vector<std::uint8_t>>& trusted_public_key);
 
+// Writes "<dir>/zerotrace-<certificate_id>.json" (created exclusively, fsynced)
+// and returns its path. Creates `dir` if needed.
+Result<std::string> save_certificate(const nlohmann::json& cert, const std::string& dir);
+
 // First 16 hex chars of SHA-256 over the raw public key.
 std::string key_id(std::span<const std::uint8_t> public_raw);
 

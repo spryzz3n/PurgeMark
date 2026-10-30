@@ -200,8 +200,12 @@ int cmd_erase(const std::vector<std::string_view>& argv) {
         std::cerr << "zt: " << cert.error() << "\n";
         return 1;
     }
-    const fs::path cert_path = out_dir / ("zerotrace-" + cert->at("certificate_id").get<std::string>() + ".json");
-    std::ofstream(cert_path) << cert->dump(2) << "\n";
+    const auto cert_path = zt::save_certificate(cert.value(), out_dir.string());
+    if (!cert_path) {
+        // Last resort: never lose the record of an erase that already happened.
+        std::cerr << "zt: " << cert_path.error() << "\n" << cert->dump(2) << "\n";
+        return 1;
+    }
 
     const auto& v = input.verification;
     if (!input.sanitization.error.empty()) std::cerr << "erase  : FAILED, " << input.sanitization.error << "\n";
@@ -211,7 +215,7 @@ int cmd_erase(const std::vector<std::string_view>& argv) {
                   << human_size(v.bytes_checked) << " read back, " << v.mismatches << " mismatches"
                   << (v.error.empty() ? "" : ", " + v.error) << "\n";
     }
-    std::cerr << "cert   : " << cert_path.string() << " ("
+    std::cerr << "cert   : " << cert_path.value() << " ("
               << (attestation == zt::Attestation::OperatorKey ? "operator key " : "self-attested, key ")
               << zt::key_id(key->public_raw()) << ")\n";
     return cert->at("result") == "sanitized" ? 0 : 1;

@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.25)
 project(zerotrace VERSION 0.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -11,11 +11,14 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
 endif()
 
 option(ZT_BUILD_TESTS "Build unit tests" ON)
+option(ZT_BUILD_TUI "Build the zerotrace terminal UI" ON)
 
 find_package(OpenSSL 3.0 REQUIRED)
 find_package(nlohmann_json 3.10 REQUIRED)
 
-add_compile_options(-Wall -Wextra -Wpedantic -Wshadow -Wconversion)
+# Strict warnings for our code only, not third-party sources.
+add_library(zt_warnings INTERFACE)
+target_compile_options(zt_warnings INTERFACE -Wall -Wextra -Wpedantic -Wshadow -Wconversion)
 
 add_library(ztcore
   core/src/ata.cpp
@@ -33,7 +36,7 @@ add_library(ztcore
   core/src/verify.cpp
 )
 target_include_directories(ztcore PUBLIC core/include)
-target_link_libraries(ztcore PUBLIC nlohmann_json::nlohmann_json PRIVATE OpenSSL::Crypto)
+target_link_libraries(ztcore PUBLIC nlohmann_json::nlohmann_json PRIVATE OpenSSL::Crypto zt_warnings)
 
 add_executable(zt
   cli/main.cpp
@@ -42,13 +45,32 @@ add_executable(zt
   cli/cmd_erase.cpp
   cli/cmd_cert.cpp
 )
-target_link_libraries(zt PRIVATE ztcore)
+target_link_libraries(zt PRIVATE ztcore zt_warnings)
+
+# Terminal UI. Uses a system FTXUI if present, else fetches a pinned release.
+if(ZT_BUILD_TUI)
+  find_package(ftxui 5 QUIET)
+  if(NOT ftxui_FOUND)
+    include(FetchContent)
+    set(FTXUI_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(FTXUI_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+    set(FTXUI_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(ftxui
+      GIT_REPOSITORY https://github.com/ArthurSonzogni/FTXUI.git
+      GIT_TAG v5.0.0
+      GIT_SHALLOW TRUE
+      SYSTEM)
+    FetchContent_MakeAvailable(ftxui)
+  endif()
+  add_executable(zerotrace tui/main.cpp)
+  target_link_libraries(zerotrace PRIVATE ztcore zt_warnings ftxui::component ftxui::dom ftxui::screen)
+endif()
 
 if(ZT_BUILD_TESTS)
   enable_testing()
   foreach(t device identify crypto erase)
     add_executable(test_${t} tests/test_${t}.cpp)
-    target_link_libraries(test_${t} PRIVATE ztcore)
+    target_link_libraries(test_${t} PRIVATE ztcore zt_warnings)
     add_test(NAME ${t} COMMAND test_${t})
   endforeach()
 endif()

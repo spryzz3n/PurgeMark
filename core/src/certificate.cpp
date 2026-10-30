@@ -1,5 +1,12 @@
 #include "zt/certificate.hpp"
 
+#include <fcntl.h>
+#include <unistd.h>
+
+#include <cerrno>
+#include <cstring>
+#include <filesystem>
+
 #include "zt/canonical_json.hpp"
 
 namespace zt {
@@ -142,6 +149,26 @@ CertificateCheck verify_unchecked(const json& cert, const std::optional<std::vec
 }
 
 }  // namespace
+
+Result<std::string> save_certificate(const json& cert, const std::string& dir) {
+    using R = Result<std::string>;
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+    if (ec) return R::fail("cannot create " + dir + ": " + ec.message());
+
+    const auto id = cert.find("certificate_id");
+    if (id == cert.end() || !id->is_string()) return R::fail("certificate has no id");
+    const std::string path = (std::filesystem::path(dir) / ("zerotrace-" + id->get<std::string>() + ".json")).string();
+    const std::string text = cert.dump(2) + "\n";
+
+    // The certificate may be the only record of the erase: make sure it hits the disk.
+    const int fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0644);
+    if (fd < 0) return R::fail("create " + path + ": " + std::strerror(errno));
+    const bool ok = ::write(fd, text.data(), text.size()) == static_cast<ssize_t>(text.size()) && ::fsync(fd) == 0;
+    ::close(fd);
+    if (!ok) return R::fail("write " + path + " failed");
+    return R::ok(path);
+}
 
 CertificateCheck verify_certificate(const json& cert, const std::optional<std::vector<std::uint8_t>>& trusted) {
     // Certificates are untrusted input; wrong field types must fail, not throw.
