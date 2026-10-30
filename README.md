@@ -1,5 +1,7 @@
 # ZeroTrace
 
+Website: [zerotrace.skysec.org](https://zerotrace.skysec.org)
+
 ZeroTrace wipes drives and then proves it. You boot a small Linux ISO, pick a disk, and it erases the disk using the drive's own sanitize commands where it can (falling back to an overwrite where it can't), reads the disk back to check the old data is really gone, and writes out a certificate signed with Ed25519 that anyone can verify later.
 
 I started this for Smart India Hackathon 2025 (problem SIH25070, secure data wiping for IT asset recycling). That version didn't work, so this is a rewrite from scratch. [docs/history.md](docs/history.md) has the story.
@@ -60,7 +62,11 @@ sudo zerotrace                             # the terminal UI
 
 `zt erase` picks the best tested method by default. `--method` chooses one explicitly, and the untested ones also need `--experimental`. To try it without a spare disk, `zt erase --image disk.img` works on an image file or a loop device.
 
-To check a certificate without installing anything, open [verifier/index.html](verifier/index.html) in a browser and drop the file on it. It runs offline, and nothing gets uploaded.
+### Verifying a certificate
+
+The easiest way is **[zerotrace.skysec.org/verify](https://zerotrace.skysec.org/verify/)**. Drop the certificate file on the page and it tells you whether the signature is valid, what drive it covers, how it was erased, and whether the check passed. If the person who erased the drive gave you their public key, paste it in to confirm the certificate came from them. The check runs entirely in your browser, so the file is never uploaded anywhere.
+
+The same page is in this repo as [verifier/index.html](verifier/index.html) if you'd rather run it offline. It works opened straight from disk. From the command line, `zt verify-cert` does the same thing.
 
 ## Building
 

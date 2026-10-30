@@ -64,4 +64,4 @@ zt verify-cert zerotrace-....json --trusted-key operator.pub
 
 The exit status is 0 only if the signature is valid, the signer matches the trusted key (when one is given), and the certificate reports success.
 
-The browser verifier in `verifier/index.html` does the same with Web Crypto. It works opened straight from disk with no network access.
+Or use the browser verifier at [zerotrace.skysec.org/verify](https://zerotrace.skysec.org/verify/), which does the same with Web Crypto without uploading the file. It's also in the repo as `verifier/index.html` and works opened straight from disk with no network access.
