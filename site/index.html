@@ -5,93 +5,153 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ZeroTrace: erase a drive and prove it</title>
 <meta name="description" content="A bootable USB that erases drives with their own sanitize commands, checks the result, and gives you a signed certificate anyone can verify.">
+<link rel="preload" href="assets/fonts/IBMPlexSans-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
 
 <header class="top">
   <div class="wrap">
-    <a class="brand" href="./">zero<span>trace</span></a>
+    <a class="brand" href="./">ZeroTrace</a>
     <nav>
-      <a href="./" aria-current="page">Home</a>
+      <a href="#how">How it works</a>
       <a href="verify/">Verify</a>
       <a href="https://github.com/spryzz3n/ZeroTrace">GitHub</a>
     </nav>
+    <a class="btn primary" href="#download">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>
+      Download
+    </a>
   </div>
 </header>
 
-<main class="wrap">
-
+<main>
   <div class="hero">
-    <h1>Erase a drive, then prove it.</h1>
-    <p class="lede">ZeroTrace is a bootable USB stick. Pick a disk, and it erases it with the drive's own sanitize commands, reads it back to check the old data is gone, and hands you a signed certificate that anyone can verify.</p>
-    <div class="actions">
-      <a class="btn primary" href="https://github.com/spryzz3n/ZeroTrace/releases/download/v0.1.0/zerotrace-live-amd64.iso">Download the ISO</a>
-      <a class="btn" href="verify/">Verify a certificate</a>
-      <span class="note">v0.1.0, 851 MB, <span class="warn">early preview</span></span>
+    <div class="wrap">
+      <div>
+        <h1>ZeroTrace</h1>
+        <p class="tagline">Erase a drive, then prove it.</p>
+        <p class="lede">A bootable USB stick for wiping disks before they're sold, recycled or reused. It erases with the drive's own sanitize commands where it can, reads the disk back to check the old data is really gone, and hands you a signed certificate that anyone can verify.</p>
+        <div class="actions">
+          <a class="btn primary" href="https://github.com/spryzz3n/ZeroTrace/releases/download/v0.1.0/zerotrace-live-amd64.iso">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>
+            Download ISO
+          </a>
+          <a class="btn" href="verify/">Verify a certificate</a>
+        </div>
+      </div>
+
+      <aside class="card">
+        <span class="label">Latest release</span>
+        <p>v0.1.0 <span class="pill warn" style="margin-left:6px">early preview</span></p>
+        <span class="label">Runs on</span>
+        <p>Any x86-64 PC, UEFI or legacy BIOS. Erases SATA, NVMe and USB drives.</p>
+        <span class="label">Built with</span>
+        <div class="pills">
+          <span class="pill">C++20</span>
+          <span class="pill">OpenSSL</span>
+          <span class="pill">Ed25519</span>
+          <span class="pill">FTXUI</span>
+          <span class="pill">Debian live-build</span>
+          <span class="pill">NVMe / SAT</span>
+        </div>
+      </aside>
     </div>
   </div>
 
   <section>
-    <h2>Why</h2>
-    <p>A lot of old laptops and drives end up in drawers instead of being reused, because their owners don't trust that wiping them actually works. They're often right to be suspicious. Deleting files or reformatting leaves the data recoverable, and overwriting an SSD from the outside can't reach all of its flash.</p>
-    <p>The usual tools either overwrite and hope, or erase properly but give you nothing to show for it. ZeroTrace does the erase the way the drive is designed to be erased, then gives you something you can hand to a buyer or a recycler.</p>
+    <div class="wrap">
+      <div class="heading"><h2>Why</h2></div>
+      <p>A lot of old laptops and drives sit in drawers instead of being reused, because their owners don't trust that wiping them works. They're often right. Deleting files or reformatting leaves the data recoverable, and overwriting an SSD from the outside can't reach all of its flash.</p>
+      <p>Most tools either overwrite and hope, or erase properly and give you nothing to show for it. ZeroTrace erases the way the drive is designed to be erased, then gives you something you can hand to a buyer or a recycler.</p>
+    </div>
   </section>
 
-  <section>
-    <h2>How it works</h2>
-    <ol class="steps">
-      <li><strong>Boot it and pick a disk.</strong> The disk the USB booted from, and anything mounted or in use, is refused. You confirm by typing the drive's serial number.</li>
-      <li><strong>It erases with the drive's own commands where it can.</strong> NVMe Sanitize or Format, or ATA SANITIZE, tells the drive to destroy its internal encryption key or wipe its flash blocks itself. Drives that can't do that get a full overwrite instead.</li>
-      <li><strong>It checks the result.</strong> About a thousand random regions are read back from the disk itself, not from a cache. For firmware erases, random markers are written beforehand and every one of them has to be gone afterwards, so a drive that only claims to have erased gets caught.</li>
-      <li><strong>You get a certificate.</strong> A JSON file signed with Ed25519, recording the drive, the method, the result of the check and when it happened. Changing a single character breaks the signature.</li>
-    </ol>
-  </section>
-
-  <section>
-    <h2>What it looks like</h2>
-    <div class="grid2">
-      <figure>
-        <img class="shot" src="images/drive-list.png" width="1280" height="800" alt="Drive list showing each disk, whether it can be erased, and the erase methods it supports">
-        <figcaption>Each drive is probed for the erase methods it supports.</figcaption>
-      </figure>
-      <figure>
-        <img class="shot" src="images/confirm-erase.png" width="1280" height="800" alt="Erase confirmation screen asking for the drive's serial number">
-        <figcaption>Nothing is written until you type the serial number.</figcaption>
-      </figure>
+  <section id="how">
+    <div class="wrap">
+      <div class="heading"><h2>How it works</h2></div>
+      <div class="stats">
+        <div class="stat"><b>2</b><span>boot modes, UEFI and legacy BIOS</span></div>
+        <div class="stat"><b>~1,000</b><span>regions read back from the disk after every erase</span></div>
+        <div class="stat"><b>0</b><span>network connections needed, from boot to certificate</span></div>
+      </div>
+      <div class="steps">
+        <div class="card">
+          <span class="label">Step 1</span>
+          <h3>Boot it and pick a disk</h3>
+          <p>The USB it booted from, and anything mounted or in use, is refused. You confirm by typing the drive's serial number.</p>
+        </div>
+        <div class="card">
+          <span class="label">Step 2</span>
+          <h3>The drive erases itself</h3>
+          <p>NVMe Sanitize or Format, or ATA SANITIZE, tells the drive to throw away its internal encryption key or wipe its own flash. Drives that can't do that get a full overwrite.</p>
+        </div>
+        <div class="card">
+          <span class="label">Step 3</span>
+          <h3>The result is checked</h3>
+          <p>Random regions are read back from the disk itself, not from a cache. For firmware erases, markers are written first and every one has to be gone afterwards, so a drive that only claims to have erased gets caught.</p>
+        </div>
+        <div class="card">
+          <span class="label">Step 4</span>
+          <h3>You get a certificate</h3>
+          <p>A JSON file signed with Ed25519, recording the drive, the method, the check and the time. Changing a single character breaks the signature.</p>
+        </div>
+      </div>
     </div>
   </section>
 
   <section>
-    <h2>Where it stands</h2>
-    <p>This is an early preview. Please don't use it on a disk you care about yet.</p>
-    <ul class="status">
-      <li class="yes">Boots on UEFI and legacy BIOS machines, tested in VMs</li>
-      <li class="yes">Overwrite and NVMe Format erase, each followed by a read-back check</li>
-      <li class="yes">Signed certificates, saved to a USB stick labelled <code>ZT-CERTS</code></li>
-      <li class="notyet">NVMe Sanitize and ATA SANITIZE are written but not yet tried on real hardware, so they're never picked by default</li>
-      <li class="no">An Android app for phones is planned</li>
-    </ul>
+    <div class="wrap">
+      <div class="heading"><h2>What it looks like</h2></div>
+      <div class="grid2">
+        <figure>
+          <img class="shot" src="images/drive-list.png" width="1280" height="800" alt="Drive list showing each disk, whether it can be erased, and the erase methods it supports">
+          <figcaption>Each drive is probed for the erase methods it supports.</figcaption>
+        </figure>
+        <figure>
+          <img class="shot" src="images/confirm-erase.png" width="1280" height="800" alt="Erase confirmation screen asking for the drive's serial number">
+          <figcaption>Nothing is written until you type the serial number.</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <div class="heading"><h2>Where it stands</h2></div>
+      <p>This is an early preview. Please don't use it on a disk you care about yet.</p>
+      <ul class="status">
+        <li><span class="tag done">tested</span>Boots on UEFI and legacy BIOS, tested in VMs</li>
+        <li><span class="tag done">tested</span>Overwrite and NVMe Format, each followed by a read-back check</li>
+        <li><span class="tag done">tested</span>Signed certificates, saved to a USB stick labelled <code>ZT-CERTS</code></li>
+        <li><span class="tag untested">untested</span>NVMe Sanitize and ATA SANITIZE: written, not yet tried on real hardware, never picked by default</li>
+        <li><span class="tag planned">planned</span>An Android app for phones</li>
+      </ul>
+    </div>
   </section>
 
   <section id="download">
-    <h2>Download</h2>
-    <p>Write the ISO to a USB stick with Rufus, balenaEtcher or <code>dd</code> and boot from it. To keep the certificates after you power off, plug in a second stick formatted FAT32 or exFAT and labelled <code>ZT-CERTS</code>.</p>
-    <div class="actions">
-      <a class="btn primary" href="https://github.com/spryzz3n/ZeroTrace/releases/download/v0.1.0/zerotrace-live-amd64.iso">zerotrace-live-amd64.iso</a>
-      <a class="btn" href="https://github.com/spryzz3n/ZeroTrace/releases/tag/v0.1.0">Release notes</a>
+    <div class="wrap">
+      <div class="heading"><h2>Download</h2></div>
+      <p>Write the ISO to a USB stick with Rufus, balenaEtcher or <code>dd</code>, and boot from it. To keep certificates after you power off, plug in a second stick formatted FAT32 or exFAT and labelled <code>ZT-CERTS</code>.</p>
+      <div class="actions" style="margin:22px 0 18px">
+        <a class="btn primary" href="https://github.com/spryzz3n/ZeroTrace/releases/download/v0.1.0/zerotrace-live-amd64.iso">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>
+          zerotrace-live-amd64.iso (851 MB)
+        </a>
+        <a class="btn" href="https://github.com/spryzz3n/ZeroTrace/releases/tag/v0.1.0">Release notes</a>
+      </div>
+      <span class="label">SHA-256</span>
+      <code class="checksum">5f9d611d2957c52ba0034b522131a49086332d7aa5b941cf9572fae041fe7358</code>
+      <p class="muted small">Source, build instructions and design notes are <a href="https://github.com/spryzz3n/ZeroTrace">on GitHub</a>, under GPL-3.0.</p>
     </div>
-    <p class="note">SHA-256, so you can check the download:</p>
-    <code class="checksum">5f9d611d2957c52ba0034b522131a49086332d7aa5b941cf9572fae041fe7358</code>
-    <p class="note">The source, build instructions and design notes are <a href="https://github.com/spryzz3n/ZeroTrace">on GitHub</a>. Licensed under GPL-3.0.</p>
   </section>
-
 </main>
 
 <footer>
   <div class="wrap">
-    <span>ZeroTrace by spryzz3n</span>
-    <span>This site loads nothing from anywhere else: no trackers, no cookies.</span>
+    <span>Made by <a href="https://me.skysec.org/">spryzz3n</a></span>
+    <span>No trackers, no cookies, nothing loaded from other sites.</span>
   </div>
 </footer>
 

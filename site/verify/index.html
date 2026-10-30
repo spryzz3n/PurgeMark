@@ -5,52 +5,68 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Verify a certificate - ZeroTrace</title>
 <meta name="description" content="Check a ZeroTrace erase certificate in your browser. Nothing is uploaded.">
+<link rel="preload" href="../assets/fonts/IBMPlexSans-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="../assets/style.css">
 </head>
 <body>
 
 <header class="top">
   <div class="wrap">
-    <a class="brand" href="../">zero<span>trace</span></a>
+    <a class="brand" href="../">ZeroTrace</a>
     <nav>
-      <a href="../">Home</a>
+      <a href="../#how">How it works</a>
       <a href="./" aria-current="page">Verify</a>
       <a href="https://github.com/spryzz3n/ZeroTrace">GitHub</a>
     </nav>
+    <a class="btn primary" href="../#download">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>
+      Download
+    </a>
   </div>
 </header>
 
-<main class="wrap">
-  <div class="hero" style="padding-bottom:20px">
-    <h1>Verify a certificate</h1>
-    <p class="lede">Got a laptop or a drive with a ZeroTrace certificate? Drop the file here to check it's genuine and see what was done to the drive. It all happens in your browser. The file never leaves your computer.</p>
+<main>
+  <div class="hero">
+    <div class="wrap" style="grid-template-columns:1fr">
+      <div>
+        <h1>Verify a certificate</h1>
+        <p class="tagline">Check it's genuine. Nothing gets uploaded.</p>
+        <p class="lede">Got a laptop or a drive that came with a ZeroTrace certificate? Drop the file below to check it hasn't been tampered with and to see what was done to the drive. Everything runs in your browser, and the file never leaves your computer.</p>
+      </div>
+    </div>
   </div>
 
-  <div class="panel">
-    <label for="cert-file">Certificate <span class="note">(zerotrace-....json)</span></label>
-    <div class="drop" id="drop" tabindex="0" role="button">Drop the certificate here, or <strong>choose a file</strong></div>
-    <input type="file" id="cert-file" accept=".json,application/json" hidden>
-  </div>
+  <section style="border-bottom:0;padding-bottom:20px">
+    <div class="wrap stack">
+      <div class="card">
+        <span class="label">Certificate</span>
+        <div class="drop" id="drop" tabindex="0" role="button" style="margin-top:8px">Drop the certificate here, or <strong>choose a file</strong></div>
+        <input type="file" id="cert-file" accept=".json,application/json" hidden>
+      </div>
 
-  <div class="panel">
-    <label for="trusted">Public key you trust <span class="note">(optional)</span></label>
-    <p class="note" style="margin-top:0">If whoever erased the drive gave you their public key (a .pub file), paste it here to confirm the certificate came from them.</p>
-    <textarea id="trusted" placeholder="-----BEGIN PUBLIC KEY-----&#10;...&#10;-----END PUBLIC KEY-----"></textarea>
-  </div>
+      <div class="card">
+        <label class="label" for="trusted">Public key you trust (optional)</label>
+        <p class="muted small">If whoever erased the drive gave you their public key (a .pub file), paste it here to confirm the certificate came from them.</p>
+        <textarea id="trusted" placeholder="-----BEGIN PUBLIC KEY-----&#10;...&#10;-----END PUBLIC KEY-----"></textarea>
+      </div>
 
-  <div class="panel result" id="result" hidden></div>
+      <div class="card" id="result" hidden></div>
+    </div>
+  </section>
 
   <section>
-    <h2>What the result means</h2>
-    <p>A valid signature means the certificate hasn't been changed since it was issued. It only tells you <em>who</em> issued it if the signing key matches a public key you already trust. Certificates marked <code>self-attested</code> were signed with a one-off key: the contents are intact, but anyone could have made one.</p>
-    <p>The check uses Ed25519 through your browser's built-in Web Crypto, over the RFC 8785 canonical form of the file. The format is described <a href="https://github.com/spryzz3n/ZeroTrace/blob/main/docs/certificates.md">here</a>.</p>
+    <div class="wrap">
+      <div class="heading"><h2>What the result means</h2></div>
+      <p>A valid signature means the certificate hasn't been changed since it was issued. It only tells you <em>who</em> issued it if the signing key matches a public key you already trust. Certificates marked <code>self-attested</code> were signed with a one-off key: the contents are intact, but anyone could have made one.</p>
+      <p>The check uses Ed25519 through your browser's built-in Web Crypto, over the RFC 8785 canonical form of the file. <a href="https://github.com/spryzz3n/ZeroTrace/blob/main/docs/certificates.md">The certificate format</a> is documented on GitHub.</p>
+    </div>
   </section>
 </main>
 
 <footer>
   <div class="wrap">
-    <span>ZeroTrace by spryzz3n</span>
-    <span>This page loads nothing from anywhere else: no trackers, no cookies.</span>
+    <span>Made by <a href="https://me.skysec.org/">spryzz3n</a></span>
+    <span>No trackers, no cookies, nothing loaded from other sites.</span>
   </div>
 </footer>
 
