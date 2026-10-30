@@ -1,0 +1,54 @@
+#include "zt/probe.hpp"
+
+#include "zt/safety.hpp"
+
+namespace zt {
+
+ProbeResult probe(const Device& dev) {
+    ProbeResult r;
+    r.device = dev;
+    r.blockers = erase_blockers(dev);
+
+    switch (dev.bus) {
+        case Bus::Nvme: {
+            const auto raw = nvme_identify_ctrl_raw(dev.path);
+            if (!raw) {
+                r.identify_error = raw.error();
+                break;
+            }
+            const auto id = parse_nvme_identify_ctrl(raw.value());
+            if (id) r.nvme = id.value();
+            else r.identify_error = id.error();
+            break;
+        }
+        case Bus::Sata:
+        case Bus::Usb:
+        case Bus::Scsi: {
+            const auto raw = ata_identify_raw(dev.path);
+            if (!raw) {
+                r.identify_error = raw.error();
+                break;
+            }
+            const auto id = parse_ata_identify(raw.value());
+            if (id) r.ata = id.value();
+            else r.identify_error = id.error();
+            break;
+        }
+        case Bus::Virtio:
+        case Bus::Mmc:
+        case Bus::Unknown:
+            r.identify_error = "no firmware sanitize path for " + to_string(dev.bus) + " devices";
+            break;
+    }
+
+    // sysfs doesn't expose SATA serials; IDENTIFY does.
+    if (r.device.serial.empty()) {
+        if (r.ata) r.device.serial = r.ata->serial;
+        else if (r.nvme) r.device.serial = r.nvme->serial;
+    }
+
+    r.methods = rank_methods(r.device, r.nvme, r.ata);
+    return r;
+}
+
+}  // namespace zt

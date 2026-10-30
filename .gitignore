@@ -1,0 +1,11 @@
+build/
+cmake-build-*/
+compile_commands.json
+.cache/
+.vscode/
+.idea/
+
+# Never commit key material
+*.pem
+*.key
+*.p12
