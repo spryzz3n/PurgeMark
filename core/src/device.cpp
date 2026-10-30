@@ -4,6 +4,7 @@
 #include <array>
 #include <fstream>
 #include <map>
+#include <optional>
 #include <sstream>
 #include <string_view>
 
@@ -136,6 +137,51 @@ NameIndex read_swaps(const fs::path& swaps) {
     return out;
 }
 
+// Builds the Device for /sys/block/<name>; nullopt for zero-size devices
+// (empty card readers, unpopulated slots).
+std::optional<Device> describe(const fs::path& block_dir, const std::string& name, const NameIndex& mounts,
+                               const NameIndex& swaps) {
+    const fs::path entry = block_dir / name;
+    Device d;
+    d.name = name;
+    d.path = "/dev/" + name;
+    // The size attribute is always in 512-byte units regardless of the logical block size.
+    try {
+        d.size_bytes = std::stoull(read_attr(entry / "size")) * 512ULL;
+    } catch (const std::exception&) {
+        d.size_bytes = 0;
+    }
+    if (d.size_bytes == 0) return std::nullopt;
+
+    d.bus = detect_bus(name, entry);
+    d.model = read_attr(entry / "device" / "model");
+    d.serial = read_attr(entry / "device" / "serial");  // NVMe exposes this; SCSI/SATA don't
+    d.firmware = read_attr(entry / "device" / "firmware_rev");
+    if (d.firmware.empty()) d.firmware = read_attr(entry / "device" / "rev");
+    d.rotational = read_flag(entry / "queue" / "rotational");
+    d.removable = read_flag(entry / "removable");
+    d.read_only = read_flag(entry / "ro");
+
+    // Partitions are child directories carrying a "partition" attribute.
+    for (const auto& child : list_dir_names(entry)) {
+        if (fs::exists(entry / child / "partition")) d.partitions.push_back(child);
+    }
+
+    std::vector<std::string> names{name};
+    names.insert(names.end(), d.partitions.begin(), d.partitions.end());
+    for (const auto& n : names) {
+        if (auto it = mounts.find(n); it != mounts.end()) {
+            d.mountpoints.insert(d.mountpoints.end(), it->second.begin(), it->second.end());
+        }
+        if (auto it = swaps.find(n); it != swaps.end()) {
+            d.swaps.insert(d.swaps.end(), it->second.begin(), it->second.end());
+        }
+        const fs::path holders_dir = n == name ? entry / "holders" : entry / n / "holders";
+        for (const auto& h : list_dir_names(holders_dir)) d.holders.push_back(h);
+    }
+    return d;
+}
+
 }  // namespace
 
 std::vector<Device> list_devices(const SystemRoots& roots) {
@@ -143,52 +189,18 @@ std::vector<Device> list_devices(const SystemRoots& roots) {
     const auto mounts = read_mounts(roots.mounts);
     const auto swaps = read_swaps(roots.swaps);
     std::vector<Device> devices;
-
     for (const auto& name : list_dir_names(block_dir)) {
         if (is_ignored(name)) continue;
-        const fs::path entry = block_dir / name;
-
-        Device d;
-        d.name = name;
-        d.path = "/dev/" + name;
-        // The size attribute is always in 512-byte units regardless of the logical block size.
-        try {
-            d.size_bytes = std::stoull(read_attr(entry / "size")) * 512ULL;
-        } catch (const std::exception&) {
-            d.size_bytes = 0;
-        }
-        if (d.size_bytes == 0) continue;  // empty card readers, unpopulated slots
-
-        d.bus = detect_bus(name, entry);
-        d.model = read_attr(entry / "device" / "model");
-        d.serial = read_attr(entry / "device" / "serial");  // NVMe exposes this; SCSI/SATA don't
-        d.firmware = read_attr(entry / "device" / "firmware_rev");
-        if (d.firmware.empty()) d.firmware = read_attr(entry / "device" / "rev");
-        d.rotational = read_flag(entry / "queue" / "rotational");
-        d.removable = read_flag(entry / "removable");
-        d.read_only = read_flag(entry / "ro");
-
-        // Partitions are child directories carrying a "partition" attribute.
-        for (const auto& child : list_dir_names(entry)) {
-            if (fs::exists(entry / child / "partition")) d.partitions.push_back(child);
-        }
-
-        std::vector<std::string> names{name};
-        names.insert(names.end(), d.partitions.begin(), d.partitions.end());
-        for (const auto& n : names) {
-            if (auto it = mounts.find(n); it != mounts.end()) {
-                d.mountpoints.insert(d.mountpoints.end(), it->second.begin(), it->second.end());
-            }
-            if (auto it = swaps.find(n); it != swaps.end()) {
-                d.swaps.insert(d.swaps.end(), it->second.begin(), it->second.end());
-            }
-            const fs::path holders_dir = n == name ? entry / "holders" : entry / n / "holders";
-            for (const auto& h : list_dir_names(holders_dir)) d.holders.push_back(h);
-        }
-
-        devices.push_back(std::move(d));
+        if (auto d = describe(block_dir, name, mounts, swaps)) devices.push_back(std::move(*d));
     }
     return devices;
+}
+
+std::optional<Device> find_device(const std::string& name_or_path, const SystemRoots& roots) {
+    const std::string name = fs::path(name_or_path).filename().string();
+    const fs::path block_dir = roots.sys / "block";
+    if (name.empty() || !fs::exists(block_dir / name)) return std::nullopt;
+    return describe(block_dir, name, read_mounts(roots.mounts), read_swaps(roots.swaps));
 }
 
 }  // namespace zt

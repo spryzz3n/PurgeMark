@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -38,6 +39,11 @@ struct SystemRoots {
 };
 
 // Enumerates whole-disk block devices. Read-only: never opens a device node.
+// Hides virtual devices (loop, dm, md, zram...) that are never erase targets.
 std::vector<Device> list_devices(const SystemRoots& roots = {});
+
+// Describes one disk by name or /dev path, including virtual ones that
+// list_devices() hides (loop devices are used as test targets).
+std::optional<Device> find_device(const std::string& name_or_path, const SystemRoots& roots = {});
 
 }  // namespace zt

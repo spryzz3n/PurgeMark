@@ -1,0 +1,165 @@
+// Overwrite, verification, and the full erase-to-certificate path on image files.
+
+#include <filesystem>
+#include <fstream>
+#include <string>
+#include <vector>
+
+#include "check.hpp"
+#include "zt/blockio.hpp"
+#include "zt/certificate.hpp"
+#include "zt/erase.hpp"
+#include "zt/overwrite.hpp"
+#include "zt/verify.hpp"
+
+namespace fs = std::filesystem;
+
+// An image whose size is a multiple of 512 but not of 4096 or the 8 MiB chunk,
+// so the tail paths get exercised.
+constexpr std::uint64_t kImageSize = (8u << 20) + 3 * 512;
+
+static fs::path make_image(const fs::path& dir, const std::string& name) {
+    const fs::path p = dir / name;
+    std::ofstream out(p, std::ios::binary);
+    const std::string secret = "TOP SECRET payroll 2025 ";
+    for (std::uint64_t i = 0; i < kImageSize; ++i) out.put(secret[i % secret.size()]);
+    return p;
+}
+
+static std::shared_ptr<zt::Target> open_target(const fs::path& p, zt::Target::Mode m) {
+    auto t = zt::Target::open(p.string(), m);
+    CHECK(static_cast<bool>(t));
+    return t ? t.value() : nullptr;
+}
+
+static void test_sample_plan() {
+    const auto plan = zt::plan_samples(kImageSize, 512, 64 << 10, 200, 42);
+    CHECK(plan.sample_bytes == (64u << 10));
+    CHECK(plan.offsets.front() == 0);
+    CHECK(plan.offsets.back() + plan.sample_bytes <= kImageSize);
+    CHECK(plan.offsets.back() + plan.sample_bytes > kImageSize - 512);  // reaches the tail
+    CHECK(std::is_sorted(plan.offsets.begin(), plan.offsets.end()));
+    CHECK(std::all_of(plan.offsets.begin(), plan.offsets.end(), [](std::uint64_t o) { return o % 512 == 0; }));
+    CHECK(zt::plan_samples(kImageSize, 512, 64 << 10, 200, 42).offsets == plan.offsets);  // reproducible
+
+    const auto tiny = zt::plan_samples(1024, 512, 64 << 10, 10, 1);
+    CHECK(tiny.sample_bytes == 1024 && tiny.offsets.size() == 1);
+    CHECK(zt::plan_samples(100, 512, 4096, 10, 1).offsets.empty());
+}
+
+static void test_overwrite_and_verify(const fs::path& dir) {
+    for (const auto pattern : {zt::Pattern::Random, zt::Pattern::Zero}) {
+        const auto img = make_image(dir, "ow.img");
+        auto t = open_target(img, zt::Target::Mode::Write);
+        if (!t) return;
+        const auto plan = zt::plan_samples(t->size(), 512, 64 << 10, 100, 7);
+        const auto before = zt::fingerprint(*t, plan);
+        CHECK(before && std::none_of(before->begin(), before->end(), [](const auto& f) { return f.uniform; }));
+
+        zt::OverwriteOptions opts;
+        opts.pattern = pattern;
+        std::uint64_t last = 0;
+        opts.progress = [&](std::uint64_t done, std::uint64_t) {
+            CHECK(done > last);
+            last = done;
+            return true;
+        };
+        const auto ow = zt::overwrite(*t, opts);
+        CHECK(ow && ow->bytes_written == kImageSize && last == kImageSize);
+        if (!ow) return;
+
+        const auto vp = zt::verify_pattern(*t, plan, ow->expected);
+        CHECK(vp.passed() && vp.samples == plan.offsets.size() && vp.mismatches == 0);
+
+        const auto vc = zt::verify_changed(*t, plan, before.value());
+        CHECK(vc.passed() && vc.skipped == 0);
+
+        // Plant old data back in a sampled region: both checks must catch it.
+        const std::uint64_t victim = plan.offsets[plan.offsets.size() / 2];
+        std::vector<std::uint8_t> secret(512, 'S');
+        CHECK(static_cast<bool>(t->write_at(victim, secret)));
+        const auto bad = zt::verify_pattern(*t, plan, ow->expected);
+        CHECK(!bad.passed() && bad.mismatches == 1 && bad.first_mismatch == victim);
+
+        // Content a zero overwrite leaves behind is uniform; "changed" mode can't judge it.
+        if (pattern == zt::Pattern::Zero) {
+            const auto after_zero = zt::fingerprint(*t, plan);
+            const auto vz = zt::verify_changed(*t, plan, after_zero.value());
+            CHECK(vz.skipped > 0);
+        }
+        fs::remove(img);
+    }
+}
+
+static void test_unchanged_is_detected(const fs::path& dir) {
+    const auto img = make_image(dir, "same.img");
+    auto t = open_target(img, zt::Target::Mode::Read);
+    if (!t) return;
+    const auto plan = zt::plan_samples(t->size(), 512, 4096, 50, 9);
+    const auto before = zt::fingerprint(*t, plan);
+    const auto vc = zt::verify_changed(*t, plan, before.value());  // "erase" that did nothing
+    CHECK(!vc.passed() && vc.mismatches == vc.samples);
+
+    const auto blank = dir / "blank.img";
+    std::ofstream(blank, std::ios::binary).write(std::string(1 << 20, '\0').data(), 1 << 20);
+    auto bt = open_target(blank, zt::Target::Mode::Read);
+    const auto bplan = zt::plan_samples(bt->size(), 512, 4096, 20, 9);
+    const auto bv = zt::verify_changed(*bt, bplan, zt::fingerprint(*bt, bplan).value());
+    CHECK(bv.inconclusive && !bv.passed());  // never-written drive: nothing to compare
+}
+
+static void test_cancel(const fs::path& dir) {
+    const auto img = make_image(dir, "cancel.img");
+    auto t = open_target(img, zt::Target::Mode::Write);
+    if (!t) return;
+    zt::OverwriteOptions opts;
+    opts.chunk_bytes = 1 << 20;
+    opts.progress = [](std::uint64_t done, std::uint64_t) { return done < (3u << 20); };
+    const auto ow = zt::overwrite(*t, opts);
+    CHECK(!ow && ow.error().find("cancelled") != std::string::npos);
+}
+
+static void test_run_erase_to_certificate(const fs::path& dir) {
+    const auto img = make_image(dir, "full.img");
+    zt::EraseJob job;
+    job.target_path = img.string();
+    job.device.model = "disk image";
+    job.device.serial = "image:full.img";
+    job.verify_samples = 64;
+
+    const auto in = zt::run_erase(job);
+    CHECK(in.sanitization.completed && in.sanitization.error.empty());
+    CHECK(in.verification.passed());
+    CHECK(in.device.size_bytes == kImageSize);
+
+    const auto key = zt::SigningKey::generate();
+    const auto cert = zt::sign_certificate(zt::make_certificate_body(in), key, zt::Attestation::OperatorKey);
+    CHECK(cert && cert->at("result") == "sanitized");
+    CHECK(zt::verify_certificate(cert.value(), key.public_raw()).trusted);
+
+    // Unimplemented firmware method: recorded as a failure, never as success.
+    job.method = zt::Method::NvmeSanitizeCrypto;
+    const auto nope = zt::run_erase(job);
+    CHECK(!nope.sanitization.completed && !nope.sanitization.error.empty());
+    CHECK(zt::make_certificate_body(nope)["result"] == "failed");
+
+    job.method = zt::Method::Overwrite;
+    job.target_path = (dir / "missing.img").string();
+    const auto missing = zt::run_erase(job);
+    CHECK(!missing.sanitization.completed && zt::make_certificate_body(missing)["result"] == "failed");
+}
+
+int main() {
+    const fs::path dir = fs::temp_directory_path() / "zt-test-erase";
+    fs::remove_all(dir);
+    fs::create_directories(dir);
+
+    test_sample_plan();
+    test_overwrite_and_verify(dir);
+    test_unchanged_is_detected(dir);
+    test_cancel(dir);
+    test_run_erase_to_certificate(dir);
+
+    fs::remove_all(dir);
+    return finish("erase");
+}
