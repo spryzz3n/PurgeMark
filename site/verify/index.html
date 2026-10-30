@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Verify a certificate - ZeroTrace</title>
+<meta name="description" content="Check a ZeroTrace erase certificate in your browser. Nothing is uploaded.">
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="../">zero<span>trace</span></a>
+    <nav>
+      <a href="../">Home</a>
+      <a href="./" aria-current="page">Verify</a>
+      <a href="https://github.com/spryzz3n/ZeroTrace">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="hero" style="padding-bottom:20px">
+    <h1>Verify a certificate</h1>
+    <p class="lede">Got a laptop or a drive with a ZeroTrace certificate? Drop the file here to check it's genuine and see what was done to the drive. It all happens in your browser. The file never leaves your computer.</p>
+  </div>
+
+  <div class="panel">
+    <label for="cert-file">Certificate <span class="note">(zerotrace-....json)</span></label>
+    <div class="drop" id="drop" tabindex="0" role="button">Drop the certificate here, or <strong>choose a file</strong></div>
+    <input type="file" id="cert-file" accept=".json,application/json" hidden>
+  </div>
+
+  <div class="panel">
+    <label for="trusted">Public key you trust <span class="note">(optional)</span></label>
+    <p class="note" style="margin-top:0">If whoever erased the drive gave you their public key (a .pub file), paste it here to confirm the certificate came from them.</p>
+    <textarea id="trusted" placeholder="-----BEGIN PUBLIC KEY-----&#10;...&#10;-----END PUBLIC KEY-----"></textarea>
+  </div>
+
+  <div class="panel result" id="result" hidden></div>
+
+  <section>
+    <h2>What the result means</h2>
+    <p>A valid signature means the certificate hasn't been changed since it was issued. It only tells you <em>who</em> issued it if the signing key matches a public key you already trust. Certificates marked <code>self-attested</code> were signed with a one-off key: the contents are intact, but anyone could have made one.</p>
+    <p>The check uses Ed25519 through your browser's built-in Web Crypto, over the RFC 8785 canonical form of the file. The format is described <a href="https://github.com/spryzz3n/ZeroTrace/blob/main/docs/certificates.md">here</a>.</p>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>ZeroTrace by spryzz3n</span>
+    <span>This page loads nothing from anywhere else: no trackers, no cookies.</span>
+  </div>
+</footer>
+
+<script src="zt-verify.js"></script>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+let current = null;
+
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const row = (k, v) => (v === undefined || v === "" ? "" : `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`);
+
+function size(bytes) {
+  if (typeof bytes !== "number") return "";
+  const units = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"];
+  let v = bytes, i = 0;
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+  return `${i ? v.toFixed(1) : v} ${units[i]}`;
+}
+
+function verdict(kind, title, detail) {
+  return `<div class="verdict ${kind}">${esc(title)}${detail ? `<small>${esc(detail)}</small>` : ""}</div>`;
+}
+
+async function render() {
+  if (!current) return;
+  const box = $("result");
+  box.hidden = false;
+
+  let trusted = null, keyError = "";
+  const pem = $("trusted").value.trim();
+  if (pem) {
+    try { trusted = ZTVerify.parsePublicKeyPem(pem); } catch (e) { keyError = e.message; }
+  }
+
+  const r = await ZTVerify.verifyCertificate(current, trusted);
+  const c = current;
+  let head;
+  if (!r.valid) head = verdict("bad", "Not a valid certificate", r.error);
+  else if (keyError) head = verdict("warn", "Signature is valid, but the public key couldn't be read", keyError);
+  else if (trusted && !r.trusted) head = verdict("bad", "Signature is valid, but it was NOT signed with the key you gave", `Signed with key ${r.keyId}`);
+  else if (c.result !== "sanitized") head = verdict("bad", "Genuine certificate, but the erase did not succeed", c.sanitization?.error || c.verification?.error || "verification did not pass");
+  else if (r.trusted) head = verdict("ok", "Genuine, and signed by the key you trust", `Key ${r.keyId}`);
+  else head = verdict("warn", "Signature is valid. Who signed it hasn't been checked.", `Key ${r.keyId} (${r.attestation}). Paste the operator's public key above to confirm it came from them.`);
+
+  if (!r.valid) { box.innerHTML = head; return; }
+  const d = c.device || {}, s = c.sanitization || {}, v = c.verification || {}, o = c.operator || {};
+  box.innerHTML = head + `<dl class="facts">
+    ${row("Result", c.result)}
+    ${row("Drive", [d.model, size(d.capacity_bytes)].filter(Boolean).join(", "))}
+    ${row("Serial", d.serial)}
+    ${row("Type", [d.bus, d.media].filter(Boolean).join(" / "))}
+    ${row("Method", `${s.method_name || s.method} (NIST ${s.nist_level})`)}
+    ${row("Pattern", s.pattern)}
+    ${row("Erased", s.started_at && `${s.started_at} to ${s.finished_at}`)}
+    ${row("Check", `${v.passed ? "passed" : "FAILED"}: ${v.samples} regions read back (${v.mode}), ${v.mismatches} problems`)}
+    ${row("Operator", [o.name, o.organization].filter(Boolean).join(", "))}
+    ${row("Issued", c.issued_at)}
+    ${row("Certificate", c.certificate_id)}
+    ${row("Made with", c.tool && `${c.tool.name} ${c.tool.version}`)}
+  </dl>`;
+}
+
+async function load(file) {
+  try {
+    current = JSON.parse(await file.text());
+  } catch {
+    current = null;
+    $("result").hidden = false;
+    $("result").innerHTML = verdict("bad", "That isn't a JSON file");
+    return;
+  }
+  render();
+}
+
+const drop = $("drop");
+drop.addEventListener("click", () => $("cert-file").click());
+drop.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("cert-file").click(); } });
+drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
+drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+drop.addEventListener("drop", (e) => { e.preventDefault(); drop.classList.remove("over"); if (e.dataTransfer.files[0]) load(e.dataTransfer.files[0]); });
+$("cert-file").addEventListener("change", (e) => { if (e.target.files[0]) load(e.target.files[0]); });
+$("trusted").addEventListener("input", render);
+
+if (!globalThis.crypto?.subtle) {
+  $("result").hidden = false;
+  $("result").innerHTML = verdict("bad", "This browser can't check signatures here", "Open the page over https in a current browser.");
+}
+</script>
+</body>
+</html>
