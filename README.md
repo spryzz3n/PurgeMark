@@ -6,6 +6,14 @@ I started this for Smart India Hackathon 2025 (problem SIH25070, secure data wip
 
 ![Drive list in the live ISO](docs/images/drive-list.png)
 
+## Download
+
+**[zerotrace-live-amd64.iso](https://github.com/spryzz3n/ZeroTrace/releases/download/v0.1.0/zerotrace-live-amd64.iso)** (v0.1.0, 851 MB, pre-release)
+
+SHA-256 `5f9d611d2957c52ba0034b522131a49086332d7aa5b941cf9572fae041fe7358` ([checksum file](https://github.com/spryzz3n/ZeroTrace/releases/download/v0.1.0/zerotrace-live-amd64.iso.sha256), [release notes](https://github.com/spryzz3n/ZeroTrace/releases/tag/v0.1.0))
+
+Write it to a USB stick with Rufus, balenaEtcher or `dd`, and boot from it. Read the status section below before using it on anything real.
+
 ## Status
 
 Early, and not something to point at a disk you care about yet. What exists and has been tested in VMs:
