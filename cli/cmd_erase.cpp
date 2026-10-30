@@ -28,6 +28,10 @@ constexpr const char* kEraseUsage =
     "usage: zt erase DEVICE [options]\n"
     "       zt erase --image FILE [options]\n"
     "\n"
+    "  --method ID            auto (default: best available, fully implemented),\n"
+    "                         overwrite, nvme-format-ses1, nvme-format-ses2,\n"
+    "                         nvme-sanitize-crypto|block|overwrite (need --experimental)\n"
+    "  --experimental         allow methods not yet validated on real hardware\n"
     "  --pattern random|zero  overwrite pattern (default random)\n"
     "  --samples N            verification samples (default 1000)\n"
     "  --operator NAME        recorded in the certificate\n"
@@ -81,7 +85,8 @@ bool confirm(const std::string& token, const Args& args) {
 }  // namespace
 
 int cmd_erase(const std::vector<std::string_view>& argv) {
-    const auto parsed = parse_args(argv, {"pattern", "samples", "operator", "org", "key", "out", "confirm"}, {"image"});
+    const auto parsed = parse_args(argv, {"method", "pattern", "samples", "operator", "org", "key", "out", "confirm"},
+                                   {"image", "experimental"});
     if (!parsed || parsed->positional.size() != 1) {
         if (!parsed) std::cerr << "zt: " << parsed.error() << "\n";
         std::cerr << kEraseUsage;
@@ -90,6 +95,16 @@ int cmd_erase(const std::vector<std::string_view>& argv) {
     const Args& args = parsed.value();
 
     zt::EraseJob job;
+    job.allow_experimental = args.has("experimental");
+    const std::string method_arg = args.get("method", "auto");
+    std::optional<zt::Method> requested;
+    if (method_arg != "auto") {
+        requested = zt::method_from_id(method_arg);
+        if (!requested) {
+            std::cerr << "zt: unknown --method " << method_arg << "\n" << kEraseUsage;
+            return 2;
+        }
+    }
     const std::string pattern = args.get("pattern", "random");
     if (pattern == "zero") job.pattern = zt::Pattern::Zero;
     else if (pattern != "random") {
@@ -134,6 +149,10 @@ int cmd_erase(const std::vector<std::string_view>& argv) {
         }
         job.device.serial = "image:" + job.device.name;
         token = job.device.name;
+        if (requested && *requested != zt::Method::Overwrite) {
+            std::cerr << "zt: --image targets support only --method overwrite\n";
+            return 2;
+        }
     } else {
         if (::geteuid() != 0) {
             std::cerr << "zt: erasing a device needs root\n";
@@ -151,16 +170,45 @@ int cmd_erase(const std::vector<std::string_view>& argv) {
             for (const auto& b : blockers) std::cerr << "zt: refusing: " << b << "\n";
             return 1;
         }
-        // Probe for identity: sysfs lacks SATA serials, IDENTIFY has them.
-        job.device = zt::probe(*dev).device;
+        // Probe for identity (sysfs lacks SATA serials, IDENTIFY has them) and capabilities.
+        const auto pr = zt::probe(*dev);
+        job.device = pr.device;
         job.target_path = dev->path;
         token = job.device.serial.empty() ? job.device.name : job.device.serial;
+
+        const auto runnable = [&](zt::Method m) {
+            const auto s = zt::support(m);
+            return s == zt::Support::Implemented || (s == zt::Support::Experimental && job.allow_experimental);
+        };
+        const zt::Candidate* chosen = nullptr;
+        for (const auto& c : pr.methods) {
+            if (requested ? c.method == *requested : (c.available && runnable(c.method))) {
+                chosen = &c;
+                break;
+            }
+        }
+        if (!chosen || !chosen->available) {
+            std::cerr << "zt: " << (requested ? zt::to_string(*requested) : std::string("no method"))
+                      << " is not available on this drive"
+                      << (chosen && !chosen->note.empty() ? ": " + chosen->note : "") << " (see zt probe)\n";
+            return 1;
+        }
+        if (!runnable(chosen->method)) {
+            std::cerr << "zt: " << zt::to_string(chosen->method)
+                      << (zt::support(chosen->method) == zt::Support::Experimental
+                              ? " is experimental; add --experimental to use it\n"
+                              : " is not implemented yet\n");
+            return 1;
+        }
+        job.method = chosen->method;
     }
 
     std::cerr << "target : " << job.target_path << "  " << or_dash(job.device.model) << "  "
               << human_size(job.device.size_bytes) << "\n"
               << "serial : " << or_dash(job.device.serial) << "\n"
-              << "method : " << zt::to_string(job.method) << ", " << zt::to_string(job.pattern) << "\n";
+              << "method : " << zt::to_string(job.method) << " (NIST "
+              << zt::to_string(zt::nominal_level(job.method, !job.device.rotational)) << ")"
+              << (job.method == zt::Method::Overwrite ? ", " + zt::to_string(job.pattern) : "") << "\n";
     if (!confirm(token, args)) {
         std::cerr << "zt: confirmation did not match; nothing was written\n";
         return 1;
@@ -209,10 +257,11 @@ int cmd_erase(const std::vector<std::string_view>& argv) {
 
     const auto& v = input.verification;
     if (!input.sanitization.error.empty()) std::cerr << "erase  : FAILED, " << input.sanitization.error << "\n";
-    else std::cerr << "erase  : wrote " << human_size(input.sanitization.bytes_written) << "\n";
+    else if (input.sanitization.bytes_written) std::cerr << "erase  : wrote " << human_size(input.sanitization.bytes_written) << "\n";
+    else std::cerr << "erase  : drive reported " << zt::to_string(job.method) << " complete\n";
     if (input.sanitization.completed) {
-        std::cerr << "verify : " << (v.passed() ? "PASSED" : "FAILED") << ", " << v.samples << " samples, "
-                  << human_size(v.bytes_checked) << " read back, " << v.mismatches << " mismatches"
+        std::cerr << "verify : " << (v.passed() ? "PASSED" : "FAILED") << " (" << v.mode << "), " << v.samples
+                  << " samples, " << human_size(v.bytes_checked) << " read back, " << v.mismatches << " mismatches"
                   << (v.error.empty() ? "" : ", " + v.error) << "\n";
     }
     std::cerr << "cert   : " << cert_path.value() << " ("

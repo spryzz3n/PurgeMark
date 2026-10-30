@@ -17,8 +17,15 @@ ProbeResult probe(const Device& dev) {
                 break;
             }
             const auto id = parse_nvme_identify_ctrl(raw.value());
-            if (id) r.nvme = id.value();
-            else r.identify_error = id.error();
+            if (!id) {
+                r.identify_error = id.error();
+                break;
+            }
+            r.nvme = id.value();
+            // NN is only the highest valid NSID; the active list says how many really exist.
+            if (const auto list = nvme_active_ns_list_raw(dev.path)) {
+                r.nvme->active_namespaces = count_active_namespaces(list.value());
+            }
             break;
         }
         case Bus::Sata:

@@ -35,6 +35,7 @@ struct Options {
     std::string out_dir = "certificates";
     std::string key_path;
     bool include_loop = false;  // list loop devices too, for testing without spare disks
+    bool experimental = false;  // offer methods not yet validated on real hardware
 };
 
 std::string human_size(std::uint64_t bytes) {
@@ -104,6 +105,12 @@ private:
     std::vector<zt::ProbeResult> drives_;
     std::vector<std::string> drive_labels_;
     int selected_ = 0;
+
+    std::vector<zt::Method> method_choices_;
+    std::vector<std::string> method_labels_;
+    int method_ = 0;
+    bool show_pattern_ = true;
+    zt::Method running_method_ = zt::Method::Overwrite;
 
     int pattern_ = 0;
     std::vector<std::string> pattern_labels_ = {"Random data (recommended)", "Zeros"};
@@ -209,16 +216,28 @@ private:
             el.push_back(m.available ? row : row | dim);
             if (!m.note.empty()) el.push_back(text("    " + m.note) | dim);
         }
-        el.push_back(separator());
-        el.push_back(paragraph("This build erases by overwrite (NIST Clear). Firmware sanitize methods "
-                               "are detected but not yet executed.") |
-                     dim);
         return el;
+    }
+
+    bool runnable(zt::Method m) const {
+        const auto s = zt::support(m);
+        return s == zt::Support::Implemented || (s == zt::Support::Experimental && opts_.experimental);
     }
 
     void start_setup() {
         const auto* r = current();
         if (!r || !r->blockers.empty()) return;
+        method_choices_.clear();
+        method_labels_.clear();
+        for (const auto& c : r->methods) {
+            if (!c.available || !runnable(c.method)) continue;
+            method_choices_.push_back(c.method);
+            std::string label = zt::to_string(c.method) + "  [" + zt::to_string(c.level) + "]";
+            if (zt::support(c.method) == zt::Support::Experimental) label += "  (experimental)";
+            method_labels_.push_back(label);
+        }
+        if (method_choices_.empty()) return;
+        method_ = 0;  // ranked best first
         operator_name_.clear();
         confirm_text_.clear();
         setup_error_.clear();
@@ -227,17 +246,23 @@ private:
 
     // --- screen 2: erase setup ---------------------------------------------------
     Component setup_screen() {
-        auto patterns = Make<PassTab>(Radiobox(&pattern_labels_, &pattern_));
+        auto methods = Make<PassTab>(Radiobox(&method_labels_, &method_));
+        auto patterns = Maybe(Make<PassTab>(Radiobox(&pattern_labels_, &pattern_)), &show_pattern_);
         auto op = Input(&operator_name_, "optional");
         auto confirm = Input(&confirm_text_, "type the serial shown above");
         auto erase = Button(" ERASE ", [this] { start_erase(); }, ButtonOption::Simple());
         auto back = Button(" Back ", [this] { page_ = kList; }, ButtonOption::Simple());
-        auto form = Container::Vertical({patterns, op, confirm, Container::Horizontal({erase, back})});
+        auto form = Container::Vertical({methods, patterns, op, confirm, Container::Horizontal({erase, back})});
 
         auto view = Renderer(form, [=, this] {
             const auto* r = current();
-            if (!r) return text("");
+            if (!r || method_choices_.empty()) return text("");
             const auto& d = r->device;
+            const zt::Method chosen = method_choices_[static_cast<std::size_t>(method_)];
+            show_pattern_ = chosen == zt::Method::Overwrite;
+            const char* how = chosen == zt::Method::Overwrite
+                                  ? "Single pass, then read-back verification."
+                                  : "Drive firmware erases itself. Canaries planted first must be gone afterwards.";
             return vbox({
                        header("Confirm erase"),
                        window(text(" Target "),
@@ -247,8 +272,10 @@ private:
                               })),
                        window(text(" Method "),
                               vbox({
-                                  text("Software overwrite, single pass, then read-back verification"),
-                                  patterns->Render(),
+                                  methods->Render(),
+                                  text(how) | dim,
+                                  show_pattern_ ? vbox({separator(), text("Overwrite pattern"), patterns->Render()})
+                                                : text(""),
                               })),
                        window(text(" Certificate "),
                               vbox({
@@ -310,7 +337,10 @@ private:
         zt::EraseJob job;
         job.target_path = r->device.path;
         job.device = r->device;
+        job.method = method_choices_[static_cast<std::size_t>(method_)];
+        job.allow_experimental = opts_.experimental;
         job.pattern = pattern_ == 0 ? zt::Pattern::Random : zt::Pattern::Zero;
+        running_method_ = job.method;
         job.progress = [this](std::uint64_t done, std::uint64_t total) {
             done_ = done;
             total_ = total;
@@ -368,7 +398,8 @@ private:
                        header("Erasing"),
                        window(text(" " + (r ? r->device.path + "  " + or_dash(r->device.model) : "") + " "),
                               vbox({
-                                  text(verifying_ ? "Verifying: reading back sampled regions..." : "Overwriting..."),
+                                  text(verifying_ ? "Verifying: reading back sampled regions..."
+                                                  : zt::to_string(running_method_) + "..."),
                                   gauge(static_cast<float>(done / total)) | color(Color::Cyan),
                                   text(stats),
                               })),
@@ -399,8 +430,8 @@ private:
                     color(ok ? Color::GreenLight : Color::RedLight),
                 separator(),
                 text("Method        " + zt::to_string(s.method) + " (NIST " + zt::to_string(s.level) + ")"),
-                text("Written       " + human_size(s.bytes_written)),
             };
+            if (s.bytes_written) el.push_back(text("Written       " + human_size(s.bytes_written)));
             if (!s.error.empty()) el.push_back(text("Error         " + s.error) | color(Color::RedLight));
             if (s.completed) {
                 el.push_back(text("Verification  " + std::string(v.passed() ? "passed" : "FAILED") + ", " +
@@ -448,8 +479,9 @@ int main(int argc, char** argv) {
         if (a == "--out" && i + 1 < argc) opts.out_dir = argv[++i];
         else if (a == "--key" && i + 1 < argc) opts.key_path = argv[++i];
         else if (a == "--include-loop") opts.include_loop = true;
+        else if (a == "--experimental") opts.experimental = true;
         else {
-            std::cerr << "usage: zerotrace [--out DIR] [--key PRIVATE.pem] [--include-loop]\n";
+            std::cerr << "usage: zerotrace [--out DIR] [--key PRIVATE.pem] [--include-loop] [--experimental]\n";
             return 2;
         }
     }

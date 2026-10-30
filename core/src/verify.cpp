@@ -30,9 +30,11 @@ SamplePlan plan_samples(std::uint64_t target_size, std::uint32_t alignment, std:
 
     const std::uint64_t last = (target_size - plan.sample_bytes) / alignment * alignment;
     plan.offsets = {0, last};
+    // Random samples sit on a grid of whole sample-sized slots, so they never
+    // partially overlap (which would waste coverage and double-count findings).
     std::mt19937_64 rng(seed);
-    std::uniform_int_distribution<std::uint64_t> dist(0, last / alignment);
-    for (std::uint32_t i = 0; i < count; ++i) plan.offsets.push_back(dist(rng) * alignment);
+    std::uniform_int_distribution<std::uint64_t> dist(0, last / plan.sample_bytes);
+    for (std::uint32_t i = 0; i < count; ++i) plan.offsets.push_back(dist(rng) * plan.sample_bytes);
 
     std::sort(plan.offsets.begin(), plan.offsets.end());
     plan.offsets.erase(std::unique(plan.offsets.begin(), plan.offsets.end()), plan.offsets.end());
@@ -61,6 +63,52 @@ VerifyReport verify_pattern(const Target& target, const SamplePlan& plan, const 
         if (std::memcmp(got.data(), want.data(), len) != 0) {
             ++r.mismatches;
             if (!r.first_mismatch) r.first_mismatch = off;
+        }
+    }
+    return r;
+}
+
+Result<ExpectedContent> plant_canaries(const Target& target, const SamplePlan& plan) {
+    using R = Result<ExpectedContent>;
+    ExpectedContent canary = [ks = Keystream::random()](std::uint64_t off, std::span<std::uint8_t> out) {
+        ks.fill(off, out);
+    };
+    AlignedBuffer buf(plan.sample_bytes);
+    for (const auto off : plan.offsets) {
+        auto s = buf.span().first(sample_len(target, plan, off));
+        canary(off, s);
+        if (auto w = target.write_at(off, s); !w) return R::fail(w.error());
+    }
+    if (auto s = target.sync(); !s) return R::fail(s.error());
+    return R::ok(std::move(canary));
+}
+
+VerifyReport verify_canaries_gone(const Target& target, const SamplePlan& plan, const ExpectedContent& canary) {
+    VerifyReport r;
+    r.mode = "canary";
+    r.seed = plan.seed;
+    r.sample_bytes = plan.sample_bytes;
+    target.drop_cache();
+
+    AlignedBuffer actual(plan.sample_bytes);
+    std::vector<std::uint8_t> planted(plan.sample_bytes);
+    for (const auto off : plan.offsets) {
+        const std::uint32_t len = sample_len(target, plan, off);
+        auto got = actual.span().first(len);
+        if (auto rd = target.read_at(off, got); !rd) {
+            r.error = rd.error();
+            return r;
+        }
+        canary(off, std::span(planted).first(len));
+        ++r.samples;
+        r.bytes_checked += len;
+        // Any surviving 512-byte sector of the canary means that region wasn't erased.
+        for (std::uint32_t pos = 0; pos + 512 <= len; pos += 512) {
+            if (std::memcmp(got.data() + pos, planted.data() + pos, 512) == 0) {
+                ++r.mismatches;
+                if (!r.first_mismatch) r.first_mismatch = off + pos;
+                break;
+            }
         }
     }
     return r;

@@ -35,6 +35,9 @@ public:
     Result<bool> sync() const;
     // Drops cached pages so later reads come from the media.
     void drop_cache() const;
+    // The underlying descriptor, for device commands (ioctls) issued while the
+    // exclusive open keeps everything else off the disk.
+    int fd() const { return fd_; }
 
 private:
     Target() = default;

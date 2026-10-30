@@ -154,26 +154,81 @@ int main() {
             CHECK(r->firmware == "5B2QGXA7");
             CHECK(r->format_supported && r->format_crypto_erase);
             CHECK(r->sanitize_crypto && r->sanitize_block && r->sanitize_overwrite);
-            CHECK(r->namespace_count == 1);
+            CHECK(r->max_namespaces == 1);
             const auto m = zt::rank_methods({}, r.value(), std::nullopt);
             CHECK(m.front().method == zt::Method::NvmeSanitizeCrypto);
+            CHECK(m.front().note.empty());  // one namespace: nothing extra to warn about
         }
     }
 
-    // NVMe: no sanitize, format-with-crypto only, multiple namespaces
+    // NVMe: no sanitize, format-with-crypto only. NN=256 like QEMU, but only 3 active:
+    // the warning must use the active count, not NN.
     {
-        const auto raw = nvme_ctrl(0, 0b101, 3);
-        const auto r = zt::parse_nvme_identify_ctrl(raw);
+        const auto raw = nvme_ctrl(0, 0b101, 256);
+        auto r = zt::parse_nvme_identify_ctrl(raw);
         CHECK(static_cast<bool>(r));
         if (r) {
-            CHECK(!r->sanitize_supported());
-            const auto m = zt::rank_methods({}, r.value(), std::nullopt);
+            auto id = r.value();
+            CHECK(!id.sanitize_supported() && id.max_namespaces == 256);
+            zt::NvmeIdentifyData list{};
+            // Little-endian NSIDs 1, 2, 5 in consecutive 4-byte slots, then a zero terminator.
+            list[0] = 1;
+            list[4] = 2;
+            list[8] = 5;
+            id.active_namespaces = zt::count_active_namespaces(list);
+            CHECK(id.active_namespaces == 3);
+            const auto m = zt::rank_methods({}, id, std::nullopt);
             CHECK(m.front().method == zt::Method::NvmeFormatCrypto);
-            CHECK(m.front().note.find("3 namespaces") != std::string::npos);
+            CHECK(m.front().note.find("all 3 namespaces") != std::string::npos);
             const auto* ses1 = find(m, zt::Method::NvmeFormatUserData);
             CHECK(ses1 && ses1->available && ses1->level == zt::Level::Clear);
         }
     }
+
+    // NVMe: Identify Namespace -> Format CDW10 keeps the current LBA format and PI settings
+    {
+        zt::NvmeIdentifyData ns{};
+        ns[26] = 0x12 | 0x20;  // FLBAS: index low bits 2, MSET=1, upper bits (6:5) = 01 -> index 0x12
+        ns[29] = 0x09;         // DPS: PI type 1, PIL=1
+        const auto f = zt::parse_nvme_identify_ns(ns, 7);
+        CHECK(f.nsid == 7 && f.lba_format == 0x12 && f.metadata_extended);
+        CHECK(f.protection_type == 1 && f.protection_first);
+        const std::uint32_t cdw10 = zt::nvme_format_cdw10(f, 2);
+        CHECK((cdw10 & 0x0F) == 0x2);          // LBAF low
+        CHECK(((cdw10 >> 4) & 1) == 1);        // MSET
+        CHECK(((cdw10 >> 5) & 7) == 1);        // PI
+        CHECK(((cdw10 >> 8) & 1) == 1);        // PIL
+        CHECK(((cdw10 >> 9) & 7) == 2);        // SES = crypto erase
+        CHECK(((cdw10 >> 12) & 3) == 1);       // LBAF high
+        CHECK(zt::nvme_format_cdw10(zt::NvmeNamespaceFormat{}, 1) == (1u << 9));
+    }
+
+    // NVMe: Sanitize Status log
+    {
+        std::array<std::uint8_t, 512> log{};
+        log[0] = 0x00;
+        log[1] = 0x80;  // SPROG = 32768 -> 50%
+        log[2] = 0x02;  // in progress
+        auto s = zt::parse_nvme_sanitize_log(log);
+        CHECK(s.progress == 32768 && !s.done());
+        log[2] = 0x01;
+        s = zt::parse_nvme_sanitize_log(log);
+        CHECK(s.done() && s.succeeded());
+        log[2] = 0x03;
+        CHECK(!zt::parse_nvme_sanitize_log(log).succeeded());
+        log[2] = 0x04;
+        CHECK(zt::parse_nvme_sanitize_log(log).succeeded());
+    }
+
+    // Method IDs round-trip, and support levels are as documented
+    for (int i = 0; i <= static_cast<int>(zt::Method::Overwrite); ++i) {
+        const auto m = static_cast<zt::Method>(i);
+        CHECK(zt::method_from_id(zt::method_id(m)) == m);
+    }
+    CHECK(!zt::method_from_id("rm-rf"));
+    CHECK(zt::support(zt::Method::NvmeFormatCrypto) == zt::Support::Implemented);
+    CHECK(zt::support(zt::Method::NvmeSanitizeCrypto) == zt::Support::Experimental);
+    CHECK(zt::support(zt::Method::AtaSecurityErase) == zt::Support::NotImplemented);
 
     // NVMe: empty data rejected
     {

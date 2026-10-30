@@ -23,23 +23,85 @@ std::string to_string(Method m) {
 
 std::string to_string(Level l) { return l == Level::Purge ? "Purge" : "Clear"; }
 
+const char* method_id(Method m) {
+    switch (m) {
+        case Method::NvmeSanitizeCrypto: return "nvme-sanitize-crypto";
+        case Method::NvmeSanitizeBlock: return "nvme-sanitize-block";
+        case Method::NvmeFormatCrypto: return "nvme-format-ses2";
+        case Method::NvmeSanitizeOverwrite: return "nvme-sanitize-overwrite";
+        case Method::NvmeFormatUserData: return "nvme-format-ses1";
+        case Method::AtaSanitizeCrypto: return "ata-sanitize-crypto";
+        case Method::AtaSanitizeBlock: return "ata-sanitize-block";
+        case Method::AtaSanitizeOverwrite: return "ata-sanitize-overwrite";
+        case Method::AtaSecurityEraseEnhanced: return "ata-security-erase-enhanced";
+        case Method::AtaSecurityErase: return "ata-security-erase";
+        case Method::Overwrite: return "overwrite";
+    }
+    return "unknown";
+}
+
+std::optional<Method> method_from_id(const std::string& id) {
+    for (int i = 0; i <= static_cast<int>(Method::Overwrite); ++i) {
+        const auto m = static_cast<Method>(i);
+        if (id == method_id(m)) return m;
+    }
+    return std::nullopt;
+}
+
+Support support(Method m) {
+    switch (m) {
+        case Method::Overwrite:
+        case Method::NvmeFormatUserData:
+        case Method::NvmeFormatCrypto:
+            return Support::Implemented;
+        case Method::NvmeSanitizeCrypto:
+        case Method::NvmeSanitizeBlock:
+        case Method::NvmeSanitizeOverwrite:
+            return Support::Experimental;
+        default:
+            return Support::NotImplemented;
+    }
+}
+
+Level nominal_level(Method m, bool ssd) {
+    switch (m) {
+        case Method::NvmeSanitizeCrypto:
+        case Method::NvmeSanitizeBlock:
+        case Method::NvmeSanitizeOverwrite:
+        case Method::NvmeFormatCrypto:
+        case Method::AtaSanitizeCrypto:
+        case Method::AtaSanitizeBlock:
+            return Level::Purge;
+        case Method::AtaSanitizeOverwrite:
+        case Method::AtaSecurityEraseEnhanced:
+        case Method::AtaSecurityErase:
+            return ssd ? Level::Clear : Level::Purge;
+        case Method::NvmeFormatUserData:
+        case Method::Overwrite:
+            return Level::Clear;
+    }
+    return Level::Clear;
+}
+
 namespace {
 
 void add_nvme(std::vector<Candidate>& out, const NvmeIdentify& id) {
-    const std::string multi_ns =
-        id.namespace_count > 1 ? "affects all " + std::to_string(id.namespace_count) + " namespaces" : "";
+    // Sanitize always covers the whole controller; Format does when FNA bit 0 is set.
+    const std::string all_ns = id.active_namespaces > 1
+                                   ? "erases all " + std::to_string(id.active_namespaces) + " namespaces"
+                                   : "";
+    const std::string fmt_scope = id.format_all_namespaces ? all_ns : "";
 
-    out.push_back({Method::NvmeSanitizeCrypto, Level::Purge, id.sanitize_crypto,
-                   id.sanitize_crypto ? "" : "not supported by controller"});
-    out.push_back({Method::NvmeSanitizeBlock, Level::Purge, id.sanitize_block,
-                   id.sanitize_block ? "" : "not supported by controller"});
+    out.push_back({Method::NvmeSanitizeCrypto, {}, id.sanitize_crypto,
+                   id.sanitize_crypto ? all_ns : "not supported by controller"});
+    out.push_back({Method::NvmeSanitizeBlock, {}, id.sanitize_block,
+                   id.sanitize_block ? all_ns : "not supported by controller"});
 
     const bool fmt_crypto = id.format_supported && id.format_crypto_erase;
-    out.push_back({Method::NvmeFormatCrypto, Level::Purge, fmt_crypto,
-                   fmt_crypto ? multi_ns : "not supported by controller"});
-    out.push_back({Method::NvmeSanitizeOverwrite, Level::Purge, id.sanitize_overwrite,
+    out.push_back({Method::NvmeFormatCrypto, {}, fmt_crypto, fmt_crypto ? fmt_scope : "not supported by controller"});
+    out.push_back({Method::NvmeSanitizeOverwrite, {}, id.sanitize_overwrite,
                    id.sanitize_overwrite ? "slow; adds flash wear" : "not supported by controller"});
-    out.push_back({Method::NvmeFormatUserData, Level::Clear, id.format_supported,
+    out.push_back({Method::NvmeFormatUserData, {}, id.format_supported,
                    id.format_supported ? "vendor-dependent; claimed as Clear only" : "Format NVM not supported"});
 }
 
@@ -48,10 +110,9 @@ void add_ata(std::vector<Candidate>& out, const AtaIdentify& id, bool ssd) {
         if (!id.sanitize_supported) return "SANITIZE feature set not supported";
         return supported ? "" : "not supported by drive";
     };
-    out.push_back({Method::AtaSanitizeCrypto, Level::Purge, id.sanitize_crypto, sanitize_note(id.sanitize_crypto)});
-    out.push_back({Method::AtaSanitizeBlock, Level::Purge, id.sanitize_block, sanitize_note(id.sanitize_block)});
-    out.push_back({Method::AtaSanitizeOverwrite, ssd ? Level::Clear : Level::Purge, id.sanitize_overwrite,
-                   sanitize_note(id.sanitize_overwrite)});
+    out.push_back({Method::AtaSanitizeCrypto, {}, id.sanitize_crypto, sanitize_note(id.sanitize_crypto)});
+    out.push_back({Method::AtaSanitizeBlock, {}, id.sanitize_block, sanitize_note(id.sanitize_block)});
+    out.push_back({Method::AtaSanitizeOverwrite, {}, id.sanitize_overwrite, sanitize_note(id.sanitize_overwrite)});
 
     // Security Erase is blocked by a frozen/locked state; frozen is common and fixable.
     std::string blocked;
@@ -71,13 +132,13 @@ void add_ata(std::vector<Candidate>& out, const AtaIdentify& id, bool ssd) {
                            : !blocked.empty()           ? blocked
                            : !ssd_caveat.empty()        ? ssd_caveat
                                                         : with_time(id.enhanced_erase_minutes);
-    out.push_back({Method::AtaSecurityEraseEnhanced, ssd ? Level::Clear : Level::Purge, enhanced, enh_note});
+    out.push_back({Method::AtaSecurityEraseEnhanced, {}, enhanced, enh_note});
 
     const bool normal = blocked.empty();
     std::string normal_note = !blocked.empty()    ? blocked
                               : !ssd_caveat.empty() ? ssd_caveat
                                                     : with_time(id.normal_erase_minutes);
-    out.push_back({Method::AtaSecurityErase, ssd ? Level::Clear : Level::Purge, normal, normal_note});
+    out.push_back({Method::AtaSecurityErase, {}, normal, normal_note});
 }
 
 }  // namespace
@@ -92,8 +153,9 @@ std::vector<Candidate> rank_methods(const Device& dev, const std::optional<NvmeI
     // Overwrite always applies but cannot reach remapped or over-provisioned
     // blocks, so it never reaches Purge.
     std::string ow_note = ssd ? "cannot reach over-provisioned flash" : "cannot reach reallocated sectors";
-    out.push_back({Method::Overwrite, Level::Clear, !dev.read_only, dev.read_only ? "device is read-only" : ow_note});
+    out.push_back({Method::Overwrite, {}, !dev.read_only, dev.read_only ? "device is read-only" : ow_note});
 
+    for (auto& c : out) c.level = nominal_level(c.method, ssd);
     std::stable_partition(out.begin(), out.end(), [](const Candidate& c) { return c.available; });
     return out;
 }

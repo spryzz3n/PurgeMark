@@ -45,7 +45,15 @@ using ExpectedContent = std::function<void(std::uint64_t offset, std::span<std::
 // After an overwrite: every sampled byte must equal the written pattern.
 VerifyReport verify_pattern(const Target& target, const SamplePlan& plan, const ExpectedContent& expected);
 
-// For firmware methods, whose post-erase content is vendor-defined: each sample
+// For firmware methods, whose post-erase content is vendor-defined (zeros, ones,
+// or ciphertext under a discarded key). Before the erase, random canaries are
+// written into every sample region; afterwards none of them may remain. Unlike
+// comparing against prior content, this is conclusive even on a blank drive and
+// catches firmware that reports success without erasing.
+Result<ExpectedContent> plant_canaries(const Target& target, const SamplePlan& plan);
+VerifyReport verify_canaries_gone(const Target& target, const SamplePlan& plan, const ExpectedContent& canary);
+
+// Compares against content fingerprinted before the erase: each sample
 // must differ from its pre-erase fingerprint. Samples that were uniform before
 // (e.g. never-written zeros) prove nothing and are skipped.
 struct Fingerprint {

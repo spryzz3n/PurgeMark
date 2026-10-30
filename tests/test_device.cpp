@@ -56,6 +56,11 @@ int main() {
     fs::create_directories(sdc / "holders" / "dm-0");  // e.g. LUKS/LVM on top
     add_disk(sys, "pci0000:00/0000:00:17.0/ata3/host2/target2:0:0/2:0:0:0", "sde", "500118192", false);
 
+    // NVMe multipath path node: same disk as nvme0n1, flagged hidden, no /dev node.
+    const auto path_node = add_disk(sys, "pci0000:00/0000:00:1d.0/nvme/nvme0/nvme0c0n1", "nvme0c0n1",
+                                    "1000215216", false);
+    put(path_node / "hidden", "1");
+
     add_disk(sys, "virtual/block/loop0", "loop0", "1024", false);  // must be ignored
     add_disk(sys, "pci0000:00/0000:00:14.0/usb1/1-3/1-3:1.0/host2/target2:0:0/2:0:0:0", "sdd", "0",
              false);  // empty card reader: must be ignored
@@ -116,6 +121,7 @@ int main() {
 
     CHECK(find("loop0") == nullptr);
     CHECK(find("sdd") == nullptr);
+    CHECK(find("nvme0c0n1") == nullptr);
 
     fs::remove_all(root);
     return finish("device");

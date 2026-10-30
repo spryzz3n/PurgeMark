@@ -152,6 +152,9 @@ std::optional<Device> describe(const fs::path& block_dir, const std::string& nam
         d.size_bytes = 0;
     }
     if (d.size_bytes == 0) return std::nullopt;
+    // Hidden disks have no /dev node, e.g. NVMe multipath paths (nvme0c0n1)
+    // that the kernel exposes only through their shared nvme0n1 head.
+    if (read_flag(entry / "hidden")) return std::nullopt;
 
     d.bus = detect_bus(name, entry);
     d.model = read_attr(entry / "device" / "model");

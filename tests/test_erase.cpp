@@ -40,6 +40,10 @@ static void test_sample_plan() {
     CHECK(plan.offsets.back() + plan.sample_bytes > kImageSize - 512);  // reaches the tail
     CHECK(std::is_sorted(plan.offsets.begin(), plan.offsets.end()));
     CHECK(std::all_of(plan.offsets.begin(), plan.offsets.end(), [](std::uint64_t o) { return o % 512 == 0; }));
+    // Apart from the end-anchored last sample, samples never overlap.
+    for (std::size_t i = 1; i + 1 < plan.offsets.size(); ++i) {
+        CHECK(plan.offsets[i] - plan.offsets[i - 1] >= plan.sample_bytes);
+    }
     CHECK(zt::plan_samples(kImageSize, 512, 64 << 10, 200, 42).offsets == plan.offsets);  // reproducible
 
     const auto tiny = zt::plan_samples(1024, 512, 64 << 10, 10, 1);
@@ -108,6 +112,37 @@ static void test_unchanged_is_detected(const fs::path& dir) {
     CHECK(bv.inconclusive && !bv.passed());  // never-written drive: nothing to compare
 }
 
+// The firmware-method check: canaries planted before the erase must all be gone after.
+static void test_canaries(const fs::path& dir) {
+    const auto img = make_image(dir, "canary.img");
+    auto t = open_target(img, zt::Target::Mode::Write);
+    if (!t) return;
+    const auto plan = zt::plan_samples(t->size(), 512, 64 << 10, 50, 3);
+    const auto canary = zt::plant_canaries(*t, plan);
+    CHECK(static_cast<bool>(canary));
+    if (!canary) return;
+
+    // Firmware that "succeeds" without erasing: every canary survives.
+    auto r = zt::verify_canaries_gone(*t, plan, canary.value());
+    CHECK(!r.passed() && r.mismatches == r.samples && r.mode == "canary");
+
+    // A real erase (simulated by zeroing the image): conclusive pass, even though
+    // zeros are uniform and would be inconclusive for verify_changed().
+    zt::OverwriteOptions zero;
+    zero.pattern = zt::Pattern::Zero;
+    CHECK(static_cast<bool>(zt::overwrite(*t, zero)));
+    r = zt::verify_canaries_gone(*t, plan, canary.value());
+    CHECK(r.passed() && r.samples == plan.offsets.size());
+
+    // One region the "firmware" missed: caught, at sector granularity.
+    std::vector<std::uint8_t> survivor(512);
+    const std::uint64_t victim = plan.offsets[plan.offsets.size() / 3] + 1024;
+    canary.value()(victim, survivor);
+    CHECK(static_cast<bool>(t->write_at(victim, survivor)));
+    r = zt::verify_canaries_gone(*t, plan, canary.value());
+    CHECK(!r.passed() && r.mismatches == 1 && r.first_mismatch == victim);
+}
+
 static void test_cancel(const fs::path& dir) {
     const auto img = make_image(dir, "cancel.img");
     auto t = open_target(img, zt::Target::Mode::Write);
@@ -137,11 +172,15 @@ static void test_run_erase_to_certificate(const fs::path& dir) {
     CHECK(cert && cert->at("result") == "sanitized");
     CHECK(zt::verify_certificate(cert.value(), key.public_raw()).trusted);
 
-    // Unimplemented firmware method: recorded as a failure, never as success.
-    job.method = zt::Method::NvmeSanitizeCrypto;
-    const auto nope = zt::run_erase(job);
-    CHECK(!nope.sanitization.completed && !nope.sanitization.error.empty());
-    CHECK(zt::make_certificate_body(nope)["result"] == "failed");
+    // Experimental method without opt-in, unimplemented method, and a firmware
+    // method on a non-NVMe target: all recorded as failures, never as success.
+    for (const auto m : {zt::Method::NvmeSanitizeCrypto, zt::Method::AtaSecurityErase, zt::Method::NvmeFormatCrypto}) {
+        job.method = m;
+        const auto nope = zt::run_erase(job);
+        CHECK(!nope.sanitization.completed && !nope.sanitization.error.empty());
+        CHECK(zt::make_certificate_body(nope)["result"] == "failed");
+    }
+    CHECK(zt::run_erase(job).sanitization.level == zt::Level::Purge);  // level comes from the core, not the caller
 
     job.method = zt::Method::Overwrite;
     job.target_path = (dir / "missing.img").string();
@@ -157,6 +196,7 @@ int main() {
     test_sample_plan();
     test_overwrite_and_verify(dir);
     test_unchanged_is_detected(dir);
+    test_canaries(dir);
     test_cancel(dir);
     test_run_erase_to_certificate(dir);
 

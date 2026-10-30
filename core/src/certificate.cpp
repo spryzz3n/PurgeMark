@@ -15,23 +15,6 @@ using nlohmann::json;
 
 namespace {
 
-const char* method_id(Method m) {
-    switch (m) {
-        case Method::NvmeSanitizeCrypto: return "nvme-sanitize-crypto";
-        case Method::NvmeSanitizeBlock: return "nvme-sanitize-block";
-        case Method::NvmeFormatCrypto: return "nvme-format-ses2";
-        case Method::NvmeSanitizeOverwrite: return "nvme-sanitize-overwrite";
-        case Method::NvmeFormatUserData: return "nvme-format-ses1";
-        case Method::AtaSanitizeCrypto: return "ata-sanitize-crypto";
-        case Method::AtaSanitizeBlock: return "ata-sanitize-block";
-        case Method::AtaSanitizeOverwrite: return "ata-sanitize-overwrite";
-        case Method::AtaSecurityEraseEnhanced: return "ata-security-erase-enhanced";
-        case Method::AtaSecurityErase: return "ata-security-erase";
-        case Method::Overwrite: return "overwrite";
-    }
-    return "unknown";
-}
-
 const char* attestation_name(Attestation a) {
     return a == Attestation::OperatorKey ? "operator-key" : "self-attested";
 }

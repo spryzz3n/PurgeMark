@@ -31,8 +31,8 @@ void print_probe(const zt::ProbeResult& r) {
     if (!r.identify_error.empty()) std::printf("  identify: %s\n", r.identify_error.c_str());
     if (r.nvme) {
         const auto& n = *r.nvme;
-        std::printf("  nvme: namespaces %u, format %s, sanitize crypto/block/overwrite %s/%s/%s\n",
-                    n.namespace_count, yes_no(n.format_supported), yes_no(n.sanitize_crypto),
+        std::printf("  nvme: active namespaces %u, format %s, sanitize crypto/block/overwrite %s/%s/%s\n",
+                    n.active_namespaces, yes_no(n.format_supported), yes_no(n.sanitize_crypto),
                     yes_no(n.sanitize_block), yes_no(n.sanitize_overwrite));
     }
     if (r.ata) {

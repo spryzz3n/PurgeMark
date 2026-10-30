@@ -29,6 +29,18 @@ enum class Level { Clear, Purge };
 
 std::string to_string(Method m);
 std::string to_string(Level l);
+const char* method_id(Method m);  // stable identifier used in certificates and on the CLI
+std::optional<Method> method_from_id(const std::string& id);
+
+// How far ZeroTrace can execute a method. Experimental ones are written to the
+// spec but haven't run against real hardware yet and need an explicit opt-in.
+enum class Support { Implemented, Experimental, NotImplemented };
+Support support(Method m);
+
+// The NIST level a method achieves. Deliberately conservative: where the
+// standard depends on the vendor's implementation (ATA Security Erase or
+// SANITIZE overwrite on SSDs, NVMe Format SES=1), we claim Clear.
+Level nominal_level(Method m, bool ssd);
 
 struct Candidate {
     Method method;
