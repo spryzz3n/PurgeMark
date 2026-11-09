@@ -44,7 +44,7 @@ More detail is in [docs/design.md](docs/design.md).
 
 ## Using it
 
-On the live ISO everything happens in the terminal UI on tty1. To keep certificates after power-off, plug in a second USB stick labelled `PM-CERTS` (FAT32 or exFAT). If it holds an `operator.key`, that key is used to sign. Without the stick the certificates stay in RAM and the UI warns you about it. Press `p` twice to power off. Ctrl+Alt+F2 gives you a root shell.
+On the live ISO everything happens in a full-screen app that works with a mouse or the keyboard. If graphics can't start on a machine, it falls back to the terminal UI. To keep certificates after power-off, plug in a second USB stick labelled `PM-CERTS` (FAT32 or exFAT). If it holds an `operator.key`, that key is used to sign. Without the stick the certificates stay in RAM and the UI warns you about it. Press `p` twice to power off. Ctrl+Alt+F2 gives you a root shell.
 
 ![Confirming an erase](docs/images/confirm-erase.png)
 
@@ -56,6 +56,7 @@ sudo pmark probe                              # what each drive supports
 pmark keygen ~/operator                       # operator.key (keep it safe) + operator.pub
 sudo pmark erase sdb --key ~/operator.key --operator "Your Name" --out certs/
 pmark verify-cert certs/purgemark-*.json --trusted-key ~/operator.pub
+sudo purgemark-gui                         # the graphical UI (needs GTK4)
 sudo purgemark                             # the terminal UI
 ```
 
@@ -93,6 +94,7 @@ That builds the binaries, drops them into the image and produces `iso/live-image
 core/      the library: discovery, safety checks, NVMe/ATA commands, erase,
            verification, canonical JSON, certificates
 cli/       the pmark command
+gui/       the purgemark-gui GTK4 app the ISO boots into
 tui/       the purgemark terminal UI
 verifier/  browser verifier and its cross-implementation test
 iso/       live-build config, kiosk service, boot settings

@@ -1,6 +1,11 @@
-# Runtime for pmark / purgemark (built on the host and copied in by iso/build.sh)
+# Runtime for pmark, purgemark and purgemark-gui (built on the host and copied in by iso/build.sh)
 libssl3t64
 libstdc++6
+libgtk-4-1
+
+# Graphical kiosk
+cage
+fonts-dejavu-core
 
 # Kiosk console. systemd-logind needs D-Bus; without it no getty spawns on
 # other VTs and the ACPI power button is ignored (apt-recommends is off).

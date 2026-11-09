@@ -1,7 +1,7 @@
 #!/bin/sh
 # Builds the PurgeMark live ISO. Run as root on a Debian 13 (trixie) host:
 #
-#   sudo apt install live-build cmake ninja-build g++ git libssl-dev nlohmann-json3-dev
+#   sudo apt install live-build cmake ninja-build g++ git libssl-dev nlohmann-json3-dev libgtk-4-dev pkg-config
 #   sudo iso/build.sh
 #
 # The binaries are compiled on the host (same Debian release as the image, so
@@ -24,7 +24,7 @@ cmake -S "$ROOT" -B "$BUILD" -G Ninja -DCMAKE_BUILD_TYPE=Release -DZT_BUILD_TEST
 cmake --build "$BUILD"
 
 BIN="$HERE/config/includes.chroot/usr/local/bin"
-install -m 0755 "$BUILD/pmark" "$BUILD/purgemark" "$BIN/"
+install -m 0755 "$BUILD/pmark" "$BUILD/purgemark" "$BUILD/purgemark-gui" "$BIN/"
 chmod 0755 "$BIN/purgemark-kiosk" "$HERE/config/hooks/normal/"*.hook.chroot "$HERE/auto/"*
 
 # live-build's boot menus wait forever (isolinux "timeout 0", no GRUB timeout).

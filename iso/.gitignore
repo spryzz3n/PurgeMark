@@ -19,5 +19,6 @@ config/bootloaders/
 # Binaries copied in at build time
 config/includes.chroot/usr/local/bin/pmark
 config/includes.chroot/usr/local/bin/purgemark
+config/includes.chroot/usr/local/bin/purgemark-gui
 *.modified_timestamps
 chroot.packages.*
