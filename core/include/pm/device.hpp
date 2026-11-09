@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-namespace zt {
+namespace pm {
 
 enum class Bus { Nvme, Sata, Usb, Scsi, Virtio, Mmc, Unknown };
 
@@ -46,4 +46,4 @@ std::vector<Device> list_devices(const SystemRoots& roots = {});
 // list_devices() hides (loop devices are used as test targets).
 std::optional<Device> find_device(const std::string& name_or_path, const SystemRoots& roots = {});
 
-}  // namespace zt
+}  // namespace pm

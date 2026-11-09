@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Verify a certificate - ZeroTrace</title>
-<meta name="description" content="Check a ZeroTrace erase certificate in your browser. Nothing is uploaded.">
+<title>Verify a certificate - PurgeMark</title>
+<meta name="description" content="Check a PurgeMark erase certificate in your browser. Nothing is uploaded.">
 <link rel="preload" href="../assets/fonts/IBMPlexSans-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="../assets/style.css">
 </head>
@@ -12,11 +12,11 @@
 
 <header class="top">
   <div class="wrap">
-    <a class="brand" href="../">ZeroTrace</a>
+    <a class="brand" href="../">PurgeMark</a>
     <nav>
       <a href="../#how">How it works</a>
       <a href="./" aria-current="page">Verify</a>
-      <a href="https://github.com/spryzz3n/ZeroTrace">GitHub</a>
+      <a href="https://github.com/spryzz3n/PurgeMark">GitHub</a>
     </nav>
     <a class="btn primary" href="../#download">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>
@@ -31,7 +31,7 @@
       <div>
         <h1>Verify a certificate</h1>
         <p class="tagline">Check it's genuine. Nothing gets uploaded.</p>
-        <p class="lede">Got a laptop or a drive that came with a ZeroTrace certificate? Drop the file below to check it hasn't been tampered with and to see what was done to the drive. Everything runs in your browser, and the file never leaves your computer.</p>
+        <p class="lede">Got a laptop or a drive that came with a PurgeMark certificate? Drop the file below to check it hasn't been tampered with and to see what was done to the drive. Everything runs in your browser, and the file never leaves your computer.</p>
       </div>
     </div>
   </div>
@@ -58,7 +58,7 @@
     <div class="wrap">
       <div class="heading"><h2>What the result means</h2></div>
       <p>A valid signature means the certificate hasn't been changed since it was issued. It only tells you <em>who</em> issued it if the signing key matches a public key you already trust. Certificates marked <code>self-attested</code> were signed with a one-off key: the contents are intact, but anyone could have made one.</p>
-      <p>The check uses Ed25519 through your browser's built-in Web Crypto, over the RFC 8785 canonical form of the file. <a href="https://github.com/spryzz3n/ZeroTrace/blob/main/docs/certificates.md">The certificate format</a> is documented on GitHub.</p>
+      <p>The check uses Ed25519 through your browser's built-in Web Crypto, over the RFC 8785 canonical form of the file. <a href="https://github.com/spryzz3n/PurgeMark/blob/main/docs/certificates.md">The certificate format</a> is documented on GitHub.</p>
     </div>
   </section>
 </main>
@@ -70,7 +70,7 @@
   </div>
 </footer>
 
-<script src="zt-verify.js"></script>
+<script src="pm-verify.js"></script>
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
@@ -99,10 +99,10 @@ async function render() {
   let trusted = null, keyError = "";
   const pem = $("trusted").value.trim();
   if (pem) {
-    try { trusted = ZTVerify.parsePublicKeyPem(pem); } catch (e) { keyError = e.message; }
+    try { trusted = PMVerify.parsePublicKeyPem(pem); } catch (e) { keyError = e.message; }
   }
 
-  const r = await ZTVerify.verifyCertificate(current, trusted);
+  const r = await PMVerify.verifyCertificate(current, trusted);
   const c = current;
   let head;
   if (!r.valid) head = verdict("bad", "Not a valid certificate", r.error);

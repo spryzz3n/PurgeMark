@@ -18,13 +18,13 @@ Overwrite stays as the fallback because it works on anything, and on a hard disk
 
 ## NIST levels are claimed conservatively
 
-NIST SP 800-88 has three levels: Clear (protects against ordinary recovery tools), Purge (protects against lab-grade recovery), and Destroy (physical destruction). Whether a command reaches Purge sometimes depends on how the vendor implemented it. ATA Security Erase on SSDs and NVMe Format SES=1 are the usual examples. In those cases ZeroTrace claims Clear. The mapping lives in one function, `nominal_level()` in `core/src/methods.cpp`, so the UI can't contradict the certificate.
+NIST SP 800-88 has three levels: Clear (protects against ordinary recovery tools), Purge (protects against lab-grade recovery), and Destroy (physical destruction). Whether a command reaches Purge sometimes depends on how the vendor implemented it. ATA Security Erase on SSDs and NVMe Format SES=1 are the usual examples. In those cases PurgeMark claims Clear. The mapping lives in one function, `nominal_level()` in `core/src/methods.cpp`, so the UI can't contradict the certificate.
 
 ## Verification has two modes
 
 After an overwrite the expected bytes are known, so the check is direct: read about 1000 random 64 KiB samples and compare them with what was written. The random pattern is an AES-256-CTR keystream, so the expected bytes can be regenerated at any offset without storing anything. Reads use `O_DIRECT`, so the page cache can't hand back what we just wrote.
 
-After a firmware erase the drive decides what's left (zeros, ones, or ciphertext under a key that no longer exists), so there's nothing to compare against. Comparing against the old contents doesn't work well either, because a brand-new drive is mostly zeros before and after. So before sending the command, ZeroTrace writes random canaries into every region it's going to sample, and afterwards none of them may survive. This also catches a drive that reports success without doing anything.
+After a firmware erase the drive decides what's left (zeros, ones, or ciphertext under a key that no longer exists), so there's nothing to compare against. Comparing against the old contents doesn't work well either, because a brand-new drive is mostly zeros before and after. So before sending the command, PurgeMark writes random canaries into every region it's going to sample, and afterwards none of them may survive. This also catches a drive that reports success without doing anything.
 
 The sample positions come from a seed that's recorded in the certificate, and the first and last regions are always included, because that's where partition tables live.
 
@@ -41,7 +41,7 @@ The operator also has to type the drive's serial number. The live system boots w
 
 ## Failures stay contained
 
-The firmware commands that haven't been tested on real hardware are labelled experimental. `auto` and the UI's default only ever pick tested methods. If a sanitize fails, ZeroTrace sends the command that lets the drive leave its "sanitize failed" state (AUSE on NVMe, FAILURE MODE plus CLEAR on ATA), so a failure doesn't leave the drive refusing all access. Status polling gives up after five consecutive errors or 24 hours. Every erase runs inside a catch-all that turns an unexpected exception into a failed certificate instead of a crashed kiosk.
+The firmware commands that haven't been tested on real hardware are labelled experimental. `auto` and the UI's default only ever pick tested methods. If a sanitize fails, PurgeMark sends the command that lets the drive leave its "sanitize failed" state (AUSE on NVMe, FAILURE MODE plus CLEAR on ATA), so a failure doesn't leave the drive refusing all access. Status polling gives up after five consecutive errors or 24 hours. Every erase runs inside a catch-all that turns an unexpected exception into a failed certificate instead of a crashed kiosk.
 
 ## Talking to drives directly
 

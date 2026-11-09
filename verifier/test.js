@@ -5,8 +5,8 @@
 "use strict";
 const fs = require("fs");
 const path = require("path");
-require("./zt-verify.js");
-const { canonicalize, parsePublicKeyPem, verifyCertificate } = globalThis.ZTVerify;
+require("./pm-verify.js");
+const { canonicalize, parsePublicKeyPem, verifyCertificate } = globalThis.PMVerify;
 
 const fx = (name) => fs.readFileSync(path.join(__dirname, "fixtures", name), "utf8");
 let failures = 0;

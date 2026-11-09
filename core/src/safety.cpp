@@ -1,6 +1,6 @@
-#include "zt/safety.hpp"
+#include "pm/safety.hpp"
 
-namespace zt {
+namespace pm {
 
 std::vector<std::string> erase_blockers(const Device& d) {
     std::vector<std::string> reasons;
@@ -12,4 +12,4 @@ std::vector<std::string> erase_blockers(const Device& d) {
     return reasons;
 }
 
-}  // namespace zt
+}  // namespace pm

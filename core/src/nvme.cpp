@@ -1,4 +1,4 @@
-#include "zt/nvme.hpp"
+#include "pm/nvme.hpp"
 
 #include <fcntl.h>
 #include <linux/nvme_ioctl.h>
@@ -11,7 +11,7 @@
 
 #include "fd.hpp"
 
-namespace zt {
+namespace pm {
 
 namespace {
 
@@ -186,4 +186,4 @@ Result<NvmeSanitizeStatus> nvme_sanitize_status(int fd) {
     return Result<NvmeSanitizeStatus>::ok(parse_nvme_sanitize_log(log));
 }
 
-}  // namespace zt
+}  // namespace pm

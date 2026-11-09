@@ -1,8 +1,8 @@
-#include "zt/probe.hpp"
+#include "pm/probe.hpp"
 
-#include "zt/safety.hpp"
+#include "pm/safety.hpp"
 
-namespace zt {
+namespace pm {
 
 ProbeResult probe(const Device& dev) {
     ProbeResult r;
@@ -58,4 +58,4 @@ ProbeResult probe(const Device& dev) {
     return r;
 }
 
-}  // namespace zt
+}  // namespace pm

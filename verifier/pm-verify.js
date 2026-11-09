@@ -1,14 +1,14 @@
-// ZeroTrace certificate verification for browsers and Node (>= 20).
+// PurgeMark certificate verification for browsers and Node (>= 20).
 // Mirrors core/src/certificate.cpp: the Ed25519 signature covers the RFC 8785
 // canonical JSON of the certificate without its "signature" member.
 //
 // A classic script (not an ES module) so index.html also works when opened
-// straight from disk; it exposes globalThis.ZTVerify.
+// straight from disk; it exposes globalThis.PMVerify.
 
 (function (global) {
   "use strict";
 
-  const SCHEMA = "zerotrace.certificate/v1";
+  const SCHEMA = "purgemark.certificate/v1";
   // DER prefix of an Ed25519 SubjectPublicKeyInfo; the raw 32-byte key follows.
   const SPKI_ED25519_PREFIX = [0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x03, 0x21, 0x00];
 
@@ -43,7 +43,7 @@
     return hex(new Uint8Array(await crypto.subtle.digest("SHA-256", publicRaw))).slice(0, 16);
   }
 
-  // Accepts a PEM "PUBLIC KEY" (as written by `zt keygen`) and returns the raw 32 bytes.
+  // Accepts a PEM "PUBLIC KEY" (as written by `pmark keygen`) and returns the raw 32 bytes.
   function parsePublicKeyPem(pem) {
     const body = pem.replace(/-----(BEGIN|END) PUBLIC KEY-----/g, "").replace(/\s+/g, "");
     const der = base64ToBytes(body);
@@ -84,5 +84,5 @@
     return out;
   }
 
-  global.ZTVerify = { SCHEMA, canonicalize, keyId, parsePublicKeyPem, verifyCertificate };
+  global.PMVerify = { SCHEMA, canonicalize, keyId, parsePublicKeyPem, verifyCertificate };
 })(globalThis);

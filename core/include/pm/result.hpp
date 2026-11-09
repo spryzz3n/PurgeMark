@@ -4,7 +4,7 @@
 #include <string>
 #include <utility>
 
-namespace zt {
+namespace pm {
 
 // Minimal value-or-error type (std::expected needs C++23).
 template <class T>
@@ -32,4 +32,4 @@ private:
     std::string error_;
 };
 
-}  // namespace zt
+}  // namespace pm

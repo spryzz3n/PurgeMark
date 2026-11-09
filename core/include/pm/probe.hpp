@@ -4,12 +4,12 @@
 #include <string>
 #include <vector>
 
-#include "zt/ata.hpp"
-#include "zt/device.hpp"
-#include "zt/methods.hpp"
-#include "zt/nvme.hpp"
+#include "pm/ata.hpp"
+#include "pm/device.hpp"
+#include "pm/methods.hpp"
+#include "pm/nvme.hpp"
 
-namespace zt {
+namespace pm {
 
 struct ProbeResult {
     Device device;
@@ -23,4 +23,4 @@ struct ProbeResult {
 // Queries the drive's identify data (read-only commands) and ranks erase methods.
 ProbeResult probe(const Device& dev);
 
-}  // namespace zt
+}  // namespace pm

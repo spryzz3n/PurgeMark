@@ -4,11 +4,11 @@
 #include <string>
 #include <vector>
 
-#include "zt/ata.hpp"
-#include "zt/device.hpp"
-#include "zt/nvme.hpp"
+#include "pm/ata.hpp"
+#include "pm/device.hpp"
+#include "pm/nvme.hpp"
 
-namespace zt {
+namespace pm {
 
 enum class Method {
     NvmeSanitizeCrypto,
@@ -32,7 +32,7 @@ std::string to_string(Level l);
 const char* method_id(Method m);  // stable identifier used in certificates and on the CLI
 std::optional<Method> method_from_id(const std::string& id);
 
-// How far ZeroTrace can execute a method. Experimental ones are written to the
+// How far PurgeMark can execute a method. Experimental ones are written to the
 // spec but haven't run against real hardware yet and need an explicit opt-in.
 enum class Support { Implemented, Experimental, NotImplemented };
 Support support(Method m);
@@ -55,4 +55,4 @@ struct Candidate {
 std::vector<Candidate> rank_methods(const Device& dev, const std::optional<NvmeIdentify>& nvme,
                                     const std::optional<AtaIdentify>& ata);
 
-}  // namespace zt
+}  // namespace pm

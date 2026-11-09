@@ -7,10 +7,10 @@
 #include <string>
 #include <vector>
 
-#include "zt/blockio.hpp"
-#include "zt/crypto.hpp"
+#include "pm/blockio.hpp"
+#include "pm/crypto.hpp"
 
-namespace zt {
+namespace pm {
 
 // Which regions of the target get read back. Always includes the first and
 // last sample (partition tables and backup GPT live there), plus `count`
@@ -63,4 +63,4 @@ struct Fingerprint {
 Result<std::vector<Fingerprint>> fingerprint(const Target& target, const SamplePlan& plan);
 VerifyReport verify_changed(const Target& target, const SamplePlan& plan, const std::vector<Fingerprint>& before);
 
-}  // namespace zt
+}  // namespace pm

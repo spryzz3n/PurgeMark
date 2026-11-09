@@ -1,14 +1,14 @@
 #!/bin/sh
-# Launches the ZeroTrace TUI on tty1.
+# Launches the PurgeMark TUI on tty1.
 #
 # Certificates must outlive the live session, so they go to a separate USB
-# stick labelled ZT-CERTS (FAT32 or exFAT). An operator signing key on that
-# stick (operator.key, from `zt keygen`) is used automatically. Being mounted
+# stick labelled PM-CERTS (FAT32 or exFAT). An operator signing key on that
+# stick (operator.key, from `pmark keygen`) is used automatically. Being mounted
 # also makes the stick show as "in use", so it can't be erased by mistake.
 
-CERTS_DEV=$(blkid -L ZT-CERTS 2>/dev/null || true)
-MNT=/mnt/zt-certs
-OUT=/run/zerotrace/certificates
+CERTS_DEV=$(blkid -L PM-CERTS 2>/dev/null || true)
+MNT=/mnt/pm-certs
+OUT=/run/purgemark/certificates
 KEY=
 
 if [ -n "$CERTS_DEV" ]; then
@@ -21,8 +21,8 @@ fi
 mkdir -p "$OUT"
 
 clear
-if [ "$OUT" = /run/zerotrace/certificates ]; then
-    printf '\n  No USB stick labelled ZT-CERTS found.\n'
+if [ "$OUT" = /run/purgemark/certificates ]; then
+    printf '\n  No USB stick labelled PM-CERTS found.\n'
     printf '  Certificates will be kept in RAM and LOST at power-off.\n\n'
     printf '  Insert one and press r to rescan, or press Enter to continue anyway.\n'
     read -r answer
@@ -32,6 +32,6 @@ fi
 # --experimental lists the untested firmware sanitize methods (marked as such);
 # the UI still preselects a tested method.
 if [ -n "$KEY" ]; then
-    exec /usr/local/bin/zerotrace --kiosk --experimental --out "$OUT" --key "$KEY"
+    exec /usr/local/bin/purgemark --kiosk --experimental --out "$OUT" --key "$KEY"
 fi
-exec /usr/local/bin/zerotrace --kiosk --experimental --out "$OUT"
+exec /usr/local/bin/purgemark --kiosk --experimental --out "$OUT"

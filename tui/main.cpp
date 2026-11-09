@@ -1,4 +1,4 @@
-// zerotrace: the full-screen terminal UI the live ISO boots into.
+// purgemark: the full-screen terminal UI the live ISO boots into.
 //
 //   drive list ──Enter──▶ erase setup ──confirm──▶ progress ──▶ result
 //        ▲                     │ Esc                               │ Enter
@@ -23,11 +23,11 @@
 #include <ftxui/component/screen_interactive.hpp>
 #include <ftxui/dom/elements.hpp>
 
-#include "zt/certificate.hpp"
-#include "zt/device.hpp"
-#include "zt/erase.hpp"
-#include "zt/probe.hpp"
-#include "zt/safety.hpp"
+#include "pm/certificate.hpp"
+#include "pm/device.hpp"
+#include "pm/erase.hpp"
+#include "pm/probe.hpp"
+#include "pm/safety.hpp"
 
 using namespace ftxui;
 namespace fs = std::filesystem;
@@ -94,14 +94,14 @@ std::string human_size(std::uint64_t bytes) {
 
 std::string or_dash(const std::string& s) { return s.empty() ? "-" : s; }
 
-std::vector<zt::Device> discover(bool include_loop) {
-    auto devices = zt::list_devices();
+std::vector<pm::Device> discover(bool include_loop) {
+    auto devices = pm::list_devices();
     if (include_loop) {
         std::error_code ec;
         for (const auto& e : fs::directory_iterator("/sys/block", ec)) {
             const auto name = e.path().filename().string();
             if (name.rfind("loop", 0) != 0) continue;
-            if (auto d = zt::find_device(name)) devices.push_back(*d);
+            if (auto d = pm::find_device(name)) devices.push_back(*d);
         }
     }
     return devices;
@@ -119,7 +119,7 @@ public:
 };
 
 // The text the operator must type to confirm: the serial when known.
-std::string confirm_token(const zt::Device& d) { return d.serial.empty() ? d.name : d.serial; }
+std::string confirm_token(const pm::Device& d) { return d.serial.empty() ? d.name : d.serial; }
 
 class App {
 public:
@@ -147,15 +147,15 @@ private:
     bool power_off_armed_ = false;  // kiosk: first 'p' arms, second 'p' powers off
     bool power_off_ = false;
 
-    std::vector<zt::ProbeResult> drives_;
+    std::vector<pm::ProbeResult> drives_;
     std::vector<std::string> drive_labels_;
     int selected_ = 0;
 
-    std::vector<zt::Method> method_choices_;
+    std::vector<pm::Method> method_choices_;
     std::vector<std::string> method_labels_;
     int method_ = 0;
     bool show_pattern_ = true;
-    zt::Method running_method_ = zt::Method::Overwrite;
+    pm::Method running_method_ = pm::Method::Overwrite;
 
     int pattern_ = 0;
     std::vector<std::string> pattern_labels_ = {"Random data (recommended)", "Zeros"};
@@ -171,12 +171,12 @@ private:
     std::thread worker_;
 
     std::mutex result_mu_;
-    zt::CertificateInput result_;
+    pm::CertificateInput result_;
     std::string cert_path_;
     std::string cert_error_;
     std::string key_note_;
 
-    const zt::ProbeResult* current() const {
+    const pm::ProbeResult* current() const {
         return selected_ >= 0 && selected_ < static_cast<int>(drives_.size()) ? &drives_[static_cast<std::size_t>(selected_)]
                                                                             : nullptr;
     }
@@ -184,7 +184,7 @@ private:
     void refresh() {
         drives_.clear();
         drive_labels_.clear();
-        for (const auto& d : discover(opts_.include_loop)) drives_.push_back(zt::probe(d));
+        for (const auto& d : discover(opts_.include_loop)) drives_.push_back(pm::probe(d));
         for (const auto& r : drives_) {
             char line[160];
             std::snprintf(line, sizeof line, "%-9s %10s  %-28.28s %s", r.device.name.c_str(),
@@ -244,11 +244,11 @@ private:
         });
     }
 
-    Elements drive_detail(const zt::ProbeResult& r) {
+    Elements drive_detail(const pm::ProbeResult& r) {
         const auto& d = r.device;
         Elements el = {
             text(or_dash(d.model)) | bold,
-            text(d.path + "  ·  " + human_size(d.size_bytes) + "  ·  " + zt::to_string(d.bus) + "  ·  " +
+            text(d.path + "  ·  " + human_size(d.size_bytes) + "  ·  " + pm::to_string(d.bus) + "  ·  " +
                  (d.rotational ? "HDD" : "SSD")),
             text("serial " + or_dash(d.serial) + "   firmware " + or_dash(d.firmware)) | dim,
             separator(),
@@ -268,9 +268,9 @@ private:
         for (const auto& m : r.methods) {
             auto row = hbox({
                 text(m.available ? g->available : g->unavailable),
-                text(zt::to_string(m.method)) | size(WIDTH, EQUAL, 40),
-                text(zt::to_string(m.level)) | size(WIDTH, EQUAL, 7) |
-                    color(m.level == zt::Level::Purge ? Color::GreenLight : Color::Yellow),
+                text(pm::to_string(m.method)) | size(WIDTH, EQUAL, 40),
+                text(pm::to_string(m.level)) | size(WIDTH, EQUAL, 7) |
+                    color(m.level == pm::Level::Purge ? Color::GreenLight : Color::Yellow),
             });
             el.push_back(m.available ? row : row | dim);
             if (!m.note.empty()) el.push_back(text("    " + m.note) | dim);
@@ -278,9 +278,9 @@ private:
         return el;
     }
 
-    bool runnable(zt::Method m) const {
-        const auto s = zt::support(m);
-        return s == zt::Support::Implemented || (s == zt::Support::Experimental && opts_.experimental);
+    bool runnable(pm::Method m) const {
+        const auto s = pm::support(m);
+        return s == pm::Support::Implemented || (s == pm::Support::Experimental && opts_.experimental);
     }
 
     void start_setup() {
@@ -291,15 +291,15 @@ private:
         for (const auto& c : r->methods) {
             if (!c.available || !runnable(c.method)) continue;
             method_choices_.push_back(c.method);
-            std::string label = zt::to_string(c.method) + "  [" + zt::to_string(c.level) + "]";
-            if (zt::support(c.method) == zt::Support::Experimental) label += "  (untested)";
+            std::string label = pm::to_string(c.method) + "  [" + pm::to_string(c.level) + "]";
+            if (pm::support(c.method) == pm::Support::Experimental) label += "  (untested)";
             method_labels_.push_back(label);
         }
         if (method_choices_.empty()) return;
         // Preselect the best tested method; untested ones run only when picked on purpose.
         method_ = 0;
         for (std::size_t i = 0; i < method_choices_.size(); ++i) {
-            if (zt::support(method_choices_[i]) == zt::Support::Implemented) {
+            if (pm::support(method_choices_[i]) == pm::Support::Implemented) {
                 method_ = static_cast<int>(i);
                 break;
             }
@@ -324,9 +324,9 @@ private:
             const auto* r = current();
             if (!r || method_choices_.empty()) return text("");
             const auto& d = r->device;
-            const zt::Method chosen = method_choices_[static_cast<std::size_t>(method_)];
-            show_pattern_ = chosen == zt::Method::Overwrite;
-            const char* how = chosen == zt::Method::Overwrite
+            const pm::Method chosen = method_choices_[static_cast<std::size_t>(method_)];
+            show_pattern_ = chosen == pm::Method::Overwrite;
+            const char* how = chosen == pm::Method::Overwrite
                                   ? "Single pass, then read-back verification."
                                   : "Drive firmware erases itself. Canaries planted first must be gone afterwards.";
             return vbox({
@@ -380,32 +380,32 @@ private:
             return;
         }
         // Re-check right before writing: the drive may have been mounted meanwhile.
-        const auto fresh = zt::find_device(r->device.name);
-        if (!fresh || !zt::erase_blockers(*fresh).empty()) {
+        const auto fresh = pm::find_device(r->device.name);
+        if (!fresh || !pm::erase_blockers(*fresh).empty()) {
             setup_error_ = "Drive is now in use. Rescan and try again.";
             return;
         }
 
-        std::optional<zt::SigningKey> key;
-        auto attestation = zt::Attestation::SelfAttested;
+        std::optional<pm::SigningKey> key;
+        auto attestation = pm::Attestation::SelfAttested;
         if (!opts_.key_path.empty()) {
-            auto k = zt::SigningKey::load_private_pem(opts_.key_path);
+            auto k = pm::SigningKey::load_private_pem(opts_.key_path);
             if (!k) {
                 setup_error_ = k.error();
                 return;
             }
             key = k.value();
-            attestation = zt::Attestation::OperatorKey;
+            attestation = pm::Attestation::OperatorKey;
         } else {
-            key = zt::SigningKey::generate();
+            key = pm::SigningKey::generate();
         }
 
-        zt::EraseJob job;
+        pm::EraseJob job;
         job.target_path = r->device.path;
         job.device = r->device;
         job.method = method_choices_[static_cast<std::size_t>(method_)];
         job.allow_experimental = opts_.experimental;
-        job.pattern = pattern_ == 0 ? zt::Pattern::Random : zt::Pattern::Zero;
+        job.pattern = pattern_ == 0 ? pm::Pattern::Random : pm::Pattern::Zero;
         running_method_ = job.method;
         job.progress = [this](std::uint64_t done, std::uint64_t total) {
             done_ = done;
@@ -424,16 +424,16 @@ private:
 
         if (worker_.joinable()) worker_.join();
         worker_ = std::thread([this, job, key = *key, attestation, op = operator_name_] {
-            zt::CertificateInput input;
+            pm::CertificateInput input;
             std::string path, error;
             // An exception escaping a std::thread would terminate the whole kiosk.
             try {
-                input = zt::run_erase(job);
+                input = pm::run_erase(job);
                 input.operator_name = op;
-                const auto cert = zt::sign_certificate(zt::make_certificate_body(input), key, attestation);
+                const auto cert = pm::sign_certificate(pm::make_certificate_body(input), key, attestation);
                 if (!cert) {
                     error = cert.error();
-                } else if (auto saved = zt::save_certificate(cert.value(), opts_.out_dir)) {
+                } else if (auto saved = pm::save_certificate(cert.value(), opts_.out_dir)) {
                     path = saved.value();
                 } else {
                     error = saved.error();
@@ -448,8 +448,8 @@ private:
                 result_ = std::move(input);
                 cert_path_ = path;
                 cert_error_ = error;
-                key_note_ = (attestation == zt::Attestation::OperatorKey ? "operator key " : "self-attested key ") +
-                            zt::key_id(key.public_raw());
+                key_note_ = (attestation == pm::Attestation::OperatorKey ? "operator key " : "self-attested key ") +
+                            pm::key_id(key.public_raw());
             }
             screen_->Post([this] { page_ = kResult; });
             screen_->PostEvent(Event::Custom);
@@ -473,7 +473,7 @@ private:
                        window(text(" " + (r ? r->device.path + "  " + or_dash(r->device.model) : "") + " "),
                               vbox({
                                   text(verifying_ ? "Verifying: reading back sampled regions..."
-                                                  : zt::to_string(running_method_) + "..."),
+                                                  : pm::to_string(running_method_) + "..."),
                                   progress_bar(static_cast<float>(done / total)) | color(Color::Cyan),
                                   text(stats),
                               })),
@@ -505,7 +505,7 @@ private:
                     bold |
                     color(ok ? Color::GreenLight : Color::RedLight),
                 separator(),
-                text("Method        " + zt::to_string(s.method) + " (NIST " + zt::to_string(s.level) + ")"),
+                text("Method        " + pm::to_string(s.method) + " (NIST " + pm::to_string(s.level) + ")"),
             };
             if (s.bytes_written) el.push_back(text("Written       " + human_size(s.bytes_written)));
             if (!s.error.empty()) el.push_back(text("Error         " + s.error) | color(Color::RedLight));
@@ -540,7 +540,7 @@ private:
     }
 
     static Element header(const std::string& title) {
-        return hbox({text(" ZeroTrace ") | bold | inverted, text("  " + title) | bold, filler(),
+        return hbox({text(" PurgeMark ") | bold | inverted, text("  " + title) | bold, filler(),
                      text("verifiable drive sanitization ") | dim});
     }
     static Element footer(const std::string& keys) { return text(" " + keys) | dim; }
@@ -559,13 +559,13 @@ int main(int argc, char** argv) {
         else if (a == "--kiosk") opts.kiosk = true;
         else if (a == "--ascii") opts.ascii = true;
         else {
-            std::cerr << "usage: zerotrace [--out DIR] [--key PRIVATE.pem] [--include-loop] [--experimental]\n"
+            std::cerr << "usage: purgemark [--out DIR] [--key PRIVATE.pem] [--include-loop] [--experimental]\n"
                          "                 [--kiosk] [--ascii]\n";
             return 2;
         }
     }
     if (::geteuid() != 0) {
-        std::cerr << "zerotrace needs root to query and erase drives.\n";
+        std::cerr << "purgemark needs root to query and erase drives.\n";
         return 1;
     }
 

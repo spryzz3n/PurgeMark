@@ -4,11 +4,11 @@
 #include <functional>
 #include <string>
 
-#include "zt/certificate.hpp"
-#include "zt/device.hpp"
-#include "zt/overwrite.hpp"
+#include "pm/certificate.hpp"
+#include "pm/device.hpp"
+#include "pm/overwrite.hpp"
 
-namespace zt {
+namespace pm {
 
 struct EraseJob {
     std::string target_path;  // block device, or an image file for testing (overwrite only)
@@ -28,4 +28,4 @@ struct EraseJob {
 // issue a certificate marked "failed".
 CertificateInput run_erase(const EraseJob& job);
 
-}  // namespace zt
+}  // namespace pm

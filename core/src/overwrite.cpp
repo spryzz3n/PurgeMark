@@ -1,12 +1,12 @@
-#include "zt/overwrite.hpp"
+#include "pm/overwrite.hpp"
 
 #include <algorithm>
 #include <chrono>
 #include <cstring>
 
-#include "zt/crypto.hpp"
+#include "pm/crypto.hpp"
 
-namespace zt {
+namespace pm {
 
 std::string to_string(Pattern p) { return p == Pattern::Zero ? "zeros" : "random (AES-256-CTR keystream)"; }
 
@@ -49,4 +49,4 @@ Result<OverwriteOutcome> overwrite(const Target& target, const OverwriteOptions&
     return R::ok(std::move(out));
 }
 
-}  // namespace zt
+}  // namespace pm

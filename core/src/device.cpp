@@ -1,4 +1,4 @@
-#include "zt/device.hpp"
+#include "pm/device.hpp"
 
 #include <algorithm>
 #include <array>
@@ -10,7 +10,7 @@
 
 namespace fs = std::filesystem;
 
-namespace zt {
+namespace pm {
 
 std::string to_string(Bus bus) {
     switch (bus) {
@@ -206,4 +206,4 @@ std::optional<Device> find_device(const std::string& name_or_path, const SystemR
     return describe(block_dir, name, read_mounts(roots.mounts), read_swaps(roots.swaps));
 }
 
-}  // namespace zt
+}  // namespace pm

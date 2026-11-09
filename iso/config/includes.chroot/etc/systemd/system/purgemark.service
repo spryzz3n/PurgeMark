@@ -1,12 +1,12 @@
 [Unit]
-Description=ZeroTrace drive sanitization kiosk
+Description=PurgeMark drive sanitization kiosk
 After=systemd-udev-settle.service systemd-user-sessions.service
 Wants=systemd-udev-settle.service
 Conflicts=getty@tty1.service
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/zerotrace-kiosk
+ExecStart=/usr/local/bin/purgemark-kiosk
 StandardInput=tty
 StandardOutput=tty
 StandardError=journal

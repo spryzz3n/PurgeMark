@@ -5,10 +5,10 @@
 #include <functional>
 #include <string>
 
-#include "zt/blockio.hpp"
-#include "zt/verify.hpp"
+#include "pm/blockio.hpp"
+#include "pm/verify.hpp"
 
-namespace zt {
+namespace pm {
 
 enum class Pattern { Zero, Random };
 std::string to_string(Pattern p);
@@ -30,4 +30,4 @@ struct OverwriteOutcome {
 // cache flush so the data is on the media before verification.
 Result<OverwriteOutcome> overwrite(const Target& target, const OverwriteOptions& options);
 
-}  // namespace zt
+}  // namespace pm

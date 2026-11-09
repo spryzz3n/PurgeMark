@@ -1,8 +1,8 @@
-#include "zt/methods.hpp"
+#include "pm/methods.hpp"
 
 #include <algorithm>
 
-namespace zt {
+namespace pm {
 
 std::string to_string(Method m) {
     switch (m) {
@@ -163,4 +163,4 @@ std::vector<Candidate> rank_methods(const Device& dev, const std::optional<NvmeI
     return out;
 }
 
-}  // namespace zt
+}  // namespace pm

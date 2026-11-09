@@ -1,6 +1,6 @@
 # History
 
-ZeroTrace started as an entry for Smart India Hackathon 2025, problem SIH25070: secure data wiping to make people trust IT asset recycling. People keep old laptops and phones in drawers because they don't believe a wipe really removes their data, so the idea was a tool that erases properly and hands you proof.
+PurgeMark was originally called ZeroTrace. It started as an entry for Smart India Hackathon 2025, problem SIH25070: secure data wiping to make people trust IT asset recycling. People keep old laptops and phones in drawers because they don't believe a wipe really removes their data, so the idea was a tool that erases properly and hands you proof.
 
 The original version was a handful of bash scripts, a Python/pywebview menu and an Android skeleton, put together without much coding experience. It didn't get through, and looking back, it didn't work. This repository is a rewrite of the same idea.
 

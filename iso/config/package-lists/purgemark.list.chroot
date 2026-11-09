@@ -1,4 +1,4 @@
-# Runtime for zt / zerotrace (built on the host and copied in by iso/build.sh)
+# Runtime for pmark / purgemark (built on the host and copied in by iso/build.sh)
 libssl3t64
 libstdc++6
 
@@ -9,7 +9,7 @@ console-setup
 dbus
 libpam-systemd
 
-# Drive diagnostics for operators on tty2 (not used by ZeroTrace itself)
+# Drive diagnostics for operators on tty2 (not used by PurgeMark itself)
 nvme-cli
 hdparm
 sg3-utils
@@ -17,7 +17,7 @@ smartmontools
 pciutils
 usbutils
 
-# Mounting the ZT-CERTS stick (FAT/exFAT)
+# Mounting the PM-CERTS stick (FAT/exFAT)
 dosfstools
 exfatprogs
 util-linux

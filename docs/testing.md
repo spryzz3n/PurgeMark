@@ -19,12 +19,12 @@ I ran it on a Debian 13 VM on Proxmox with an emulated NVMe drive and two SATA d
 
 ```
 args: -drive file=/dev/pve/vm-NNN-disk-nvme,if=none,id=nvme0,format=raw \
-      -device nvme,drive=nvme0,serial=ZTNVME0001
+      -device nvme,drive=nvme0,serial=PMNVME0001
 ```
 
 ## The ISO
 
-The ISO was booted in a separate VM with no network, under both OVMF (UEFI) and SeaBIOS, with an NVMe disk, a SATA disk and a small USB stick labelled `ZT-CERTS`. Screenshots came from the QEMU monitor (`screendump`), and keystrokes were sent with `qm sendkey`.
+The ISO was booted in a separate VM with no network, under both OVMF (UEFI) and SeaBIOS, with an NVMe disk, a SATA disk and a small USB stick labelled `PM-CERTS`. Screenshots came from the QEMU monitor (`screendump`), and keystrokes were sent with `qm sendkey`.
 
 That first boot found several real problems, all fixed:
 

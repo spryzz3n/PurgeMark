@@ -6,9 +6,9 @@
 #include <span>
 #include <string>
 
-#include "zt/result.hpp"
+#include "pm/result.hpp"
 
-namespace zt {
+namespace pm {
 
 // Fields of ATA IDENTIFY DEVICE (ACS-4) that matter for sanitization.
 struct AtaIdentify {
@@ -98,4 +98,4 @@ AtaSanitizeStatus parse_ata_sanitize_status(const AtaRegisters& regs);
 Result<bool> ata_sanitize_start(int fd, AtaSanitizeAction action);
 Result<AtaSanitizeStatus> ata_sanitize_status(int fd, bool clear_failure = false);
 
-}  // namespace zt
+}  // namespace pm

@@ -2,7 +2,7 @@
 
 #include <unistd.h>
 
-namespace zt {
+namespace pm {
 
 // Owning file descriptor; closes on scope exit.
 class Fd {
@@ -21,4 +21,4 @@ private:
     int fd_;
 };
 
-}  // namespace zt
+}  // namespace pm

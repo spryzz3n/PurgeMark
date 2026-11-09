@@ -1,4 +1,4 @@
-#include "zt/blockio.hpp"
+#include "pm/blockio.hpp"
 
 #include <fcntl.h>
 #include <linux/fs.h>
@@ -11,7 +11,7 @@
 #include <cstring>
 #include <new>
 
-namespace zt {
+namespace pm {
 
 namespace {
 
@@ -107,4 +107,4 @@ AlignedBuffer::AlignedBuffer(std::size_t size) : size_(size) {
 
 void AlignedBuffer::Free::operator()(std::uint8_t* p) const { std::free(p); }
 
-}  // namespace zt
+}  // namespace pm

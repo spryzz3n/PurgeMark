@@ -1,4 +1,4 @@
-// `zt keygen` and `zt verify-cert`.
+// `pmark keygen` and `pmark verify-cert`.
 
 #include <fstream>
 #include <iostream>
@@ -7,32 +7,32 @@
 #include <nlohmann/json.hpp>
 
 #include "common.hpp"
-#include "zt/certificate.hpp"
+#include "pm/certificate.hpp"
 
-namespace ztcli {
+namespace pmcli {
 
 int cmd_keygen(const std::vector<std::string_view>& argv) {
     if (argv.size() != 1) {
-        std::cerr << "usage: zt keygen PREFIX   (writes PREFIX.key and PREFIX.pub)\n";
+        std::cerr << "usage: pmark keygen PREFIX   (writes PREFIX.key and PREFIX.pub)\n";
         return 2;
     }
     const std::string prefix(argv[0]);
-    const auto key = zt::SigningKey::generate();
+    const auto key = pm::SigningKey::generate();
     if (auto r = key.save_pem(prefix + ".key", prefix + ".pub"); !r) {
-        std::cerr << "zt: " << r.error() << "\n";
+        std::cerr << "pmark: " << r.error() << "\n";
         return 1;
     }
     std::cout << "private key: " << prefix << ".key (keep offline; mode 0600)\n"
               << "public key : " << prefix << ".pub (give to verifiers)\n"
-              << "key id     : " << zt::key_id(key.public_raw()) << "\n";
+              << "key id     : " << pm::key_id(key.public_raw()) << "\n";
     return 0;
 }
 
 int cmd_verify_cert(const std::vector<std::string_view>& argv) {
     const auto parsed = parse_args(argv, {"trusted-key"}, {});
     if (!parsed || parsed->positional.size() != 1) {
-        if (!parsed) std::cerr << "zt: " << parsed.error() << "\n";
-        std::cerr << "usage: zt verify-cert CERT.json [--trusted-key PUBLIC.pem]\n"
+        if (!parsed) std::cerr << "pmark: " << parsed.error() << "\n";
+        std::cerr << "usage: pmark verify-cert CERT.json [--trusted-key PUBLIC.pem]\n"
                      "exit status 0 only if the signature is valid, the signer is trusted\n"
                      "(when --trusted-key is given), and the certificate reports success.\n";
         return 2;
@@ -41,9 +41,9 @@ int cmd_verify_cert(const std::vector<std::string_view>& argv) {
 
     std::optional<std::vector<std::uint8_t>> trusted;
     if (args.options.count("trusted-key")) {
-        auto pub = zt::load_public_pem(args.get("trusted-key"));
+        auto pub = pm::load_public_pem(args.get("trusted-key"));
         if (!pub) {
-            std::cerr << "zt: " << pub.error() << "\n";
+            std::cerr << "pmark: " << pub.error() << "\n";
             return 1;
         }
         trusted = pub.value();
@@ -51,16 +51,16 @@ int cmd_verify_cert(const std::vector<std::string_view>& argv) {
 
     std::ifstream in(args.positional[0]);
     if (!in) {
-        std::cerr << "zt: cannot read " << args.positional[0] << "\n";
+        std::cerr << "pmark: cannot read " << args.positional[0] << "\n";
         return 1;
     }
     const auto cert = nlohmann::json::parse(in, nullptr, /*allow_exceptions=*/false);
     if (cert.is_discarded()) {
-        std::cerr << "zt: not valid JSON\n";
+        std::cerr << "pmark: not valid JSON\n";
         return 1;
     }
 
-    const auto check = zt::verify_certificate(cert, trusted);
+    const auto check = pm::verify_certificate(cert, trusted);
     if (!check.signature_valid) {
         std::cout << "signature : INVALID, " << check.error << "\n";
         return 1;
@@ -91,4 +91,4 @@ int cmd_verify_cert(const std::vector<std::string_view>& argv) {
     return ok ? 0 : 1;
 }
 
-}  // namespace ztcli
+}  // namespace pmcli

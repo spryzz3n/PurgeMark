@@ -5,8 +5,8 @@
 #include <string>
 
 #include "check.hpp"
-#include "zt/device.hpp"
-#include "zt/safety.hpp"
+#include "pm/device.hpp"
+#include "pm/safety.hpp"
 
 namespace fs = std::filesystem;
 
@@ -30,7 +30,7 @@ static fs::path add_disk(const fs::path& sys, const std::string& device_path, co
 }
 
 int main() {
-    const fs::path root = fs::temp_directory_path() / "zt-test-sysfs";
+    const fs::path root = fs::temp_directory_path() / "pm-test-sysfs";
     fs::remove_all(root);
     const fs::path sys = root / "sys";
 
@@ -76,10 +76,10 @@ int main() {
         "/dev/sda2                               partition\t2097152\t\t0\t\t-2\n"
         "/swapfile                               file\t\t1048576\t\t0\t\t-3");
 
-    const auto devs = zt::list_devices({sys, mounts, swaps});
+    const auto devs = pm::list_devices({sys, mounts, swaps});
 
     CHECK(devs.size() == 5);  // nvme0n1, sda, sdb, sdc, sde
-    auto find = [&](const std::string& n) -> const zt::Device* {
+    auto find = [&](const std::string& n) -> const pm::Device* {
         for (const auto& d : devs)
             if (d.name == n) return &d;
         return nullptr;
@@ -88,36 +88,36 @@ int main() {
     const auto* n = find("nvme0n1");
     CHECK(n != nullptr);
     if (n) {
-        CHECK(n->bus == zt::Bus::Nvme);
+        CHECK(n->bus == pm::Bus::Nvme);
         CHECK(n->model == "Samsung SSD 980 PRO 500GB");
         CHECK(n->serial == "S5GXNX0R123456");
         CHECK(n->firmware == "5B2QGXA7");
         CHECK(n->size_bytes == 1000215216ULL * 512);
         CHECK(!n->rotational);
-        CHECK(zt::erase_blockers(*n).empty());
+        CHECK(pm::erase_blockers(*n).empty());
     }
 
     const auto* a = find("sda");
     CHECK(a != nullptr);
     if (a) {
-        CHECK(a->bus == zt::Bus::Sata);
+        CHECK(a->bus == pm::Bus::Sata);
         CHECK(a->firmware == "1A01");
         CHECK(a->rotational);
         CHECK(a->partitions.size() == 2);
         CHECK(a->mountpoints.size() == 1 && a->mountpoints[0] == "/mnt/my data");
         CHECK(a->swaps.size() == 1 && a->swaps[0] == "/dev/sda2");
-        CHECK(zt::erase_blockers(*a).size() == 2);  // mounted + swap
+        CHECK(pm::erase_blockers(*a).size() == 2);  // mounted + swap
     }
 
     const auto* b = find("sdb");
-    CHECK(b != nullptr && b->bus == zt::Bus::Usb);
-    CHECK(b != nullptr && b->read_only && zt::erase_blockers(*b).size() == 1);
+    CHECK(b != nullptr && b->bus == pm::Bus::Usb);
+    CHECK(b != nullptr && b->read_only && pm::erase_blockers(*b).size() == 1);
 
     const auto* c = find("sdc");
     CHECK(c != nullptr && c->holders.size() == 1 && c->in_use());
 
     const auto* e = find("sde");
-    CHECK(e != nullptr && zt::erase_blockers(*e).empty());
+    CHECK(e != nullptr && pm::erase_blockers(*e).empty());
 
     CHECK(find("loop0") == nullptr);
     CHECK(find("sdd") == nullptr);

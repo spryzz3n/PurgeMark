@@ -1,4 +1,4 @@
-#include "zt/erase.hpp"
+#include "pm/erase.hpp"
 
 #include <linux/fs.h>
 #include <sys/ioctl.h>
@@ -7,12 +7,12 @@
 #include <cstring>
 #include <thread>
 
-#include "zt/ata.hpp"
-#include "zt/blockio.hpp"
-#include "zt/crypto.hpp"
-#include "zt/nvme.hpp"
+#include "pm/ata.hpp"
+#include "pm/blockio.hpp"
+#include "pm/crypto.hpp"
+#include "pm/nvme.hpp"
 
-namespace zt {
+namespace pm {
 
 namespace {
 
@@ -225,4 +225,4 @@ CertificateInput run_erase(const EraseJob& job) {
     return in;
 }
 
-}  // namespace zt
+}  // namespace pm

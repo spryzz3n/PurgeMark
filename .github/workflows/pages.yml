@@ -8,7 +8,7 @@ on:
     branches: [main]
     paths:
       - "site/**"
-      - "verifier/zt-verify.js"
+      - "verifier/pm-verify.js"
       - "docs/images/**"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
@@ -34,7 +34,7 @@ jobs:
         run: |
           mkdir -p public
           cp -r site/. public/
-          cp verifier/zt-verify.js public/verify/
+          cp verifier/pm-verify.js public/verify/
           mkdir -p public/images
           cp docs/images/*.png public/images/
       - uses: actions/configure-pages@v5

@@ -1,4 +1,4 @@
-#include "zt/ata.hpp"
+#include "pm/ata.hpp"
 
 #include <fcntl.h>
 #include <scsi/sg.h>
@@ -13,7 +13,7 @@
 
 #include "fd.hpp"
 
-namespace zt {
+namespace pm {
 
 namespace {
 
@@ -285,4 +285,4 @@ Result<AtaSanitizeStatus> ata_sanitize_status(int fd, bool clear_failure) {
     return Result<AtaSanitizeStatus>::ok(parse_ata_sanitize_status(r.value()));
 }
 
-}  // namespace zt
+}  // namespace pm
