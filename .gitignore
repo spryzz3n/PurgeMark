@@ -11,3 +11,21 @@ compile_commands.json
 *.p12
 
 build-iso/
+
+# Android
+*.apk
+*.aab
+.gradle/
+.kotlin/
+local.properties
+
+# Local leftovers
+*.log
+*.tmp
+*.swp
+*.iso
+*.iso.sha256
+.DS_Store
+Thumbs.db
+desktop.ini
+.env
