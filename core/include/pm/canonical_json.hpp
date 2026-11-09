@@ -4,9 +4,9 @@
 
 #include <nlohmann/json.hpp>
 
-#include "zt/result.hpp"
+#include "pm/result.hpp"
 
-namespace zt {
+namespace pm {
 
 // RFC 8785 (JSON Canonicalization Scheme) serialization: no whitespace,
 // object keys sorted by UTF-16 code units, minimal string escaping.
@@ -15,4 +15,4 @@ namespace zt {
 // implementations. Strings must be valid UTF-8.
 Result<std::string> canonicalize(const nlohmann::json& value);
 
-}  // namespace zt
+}  // namespace pm

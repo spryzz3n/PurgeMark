@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ZeroTrace Verifier</title>
-<meta name="description" content="Check a ZeroTrace sanitization certificate's signature locally in your browser.">
+<title>PurgeMark Verifier</title>
+<meta name="description" content="Check a PurgeMark sanitization certificate's signature locally in your browser.">
 <style>
   :root {
     --bg: #f6f7f9; --panel: #ffffff; --text: #16181d; --muted: #5d6573; --line: #dde1e7;
@@ -48,11 +48,11 @@
 </head>
 <body>
 <main>
-  <h1>ZeroTrace certificate verifier</h1>
+  <h1>PurgeMark certificate verifier</h1>
   <p class="lede">Checks a sanitization certificate's Ed25519 signature. Everything runs in this page; nothing is uploaded.</p>
 
   <div class="panel">
-    <label for="cert-file">Certificate <span class="hint">(zerotrace-….json)</span></label>
+    <label for="cert-file">Certificate <span class="hint">(purgemark-….json)</span></label>
     <div class="drop" id="drop" tabindex="0" role="button">Drop the certificate here or <strong>choose a file</strong></div>
     <input type="file" id="cert-file" accept=".json,application/json">
   </div>
@@ -71,7 +71,7 @@
   </footer>
 </main>
 
-<script src="zt-verify.js"></script>
+<script src="pm-verify.js"></script>
 <script>
   "use strict";
   const $ = (id) => document.getElementById(id);
@@ -101,10 +101,10 @@
     let trusted = null, keyError = "";
     const pem = $("trusted").value.trim();
     if (pem) {
-      try { trusted = ZTVerify.parsePublicKeyPem(pem); } catch (e) { keyError = e.message; }
+      try { trusted = PMVerify.parsePublicKeyPem(pem); } catch (e) { keyError = e.message; }
     }
 
-    const r = await ZTVerify.verifyCertificate(lastCert, trusted);
+    const r = await PMVerify.verifyCertificate(lastCert, trusted);
     const c = lastCert;
     let status;
     if (!r.valid) {

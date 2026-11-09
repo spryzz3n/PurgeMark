@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ZeroTrace: erase a drive and prove it</title>
+<title>PurgeMark: erase a drive and prove it</title>
 <meta name="description" content="A bootable USB that erases drives with their own sanitize commands, checks the result, and gives you a signed certificate anyone can verify.">
 <link rel="preload" href="assets/fonts/IBMPlexSans-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="assets/style.css">
@@ -12,11 +12,11 @@
 
 <header class="top">
   <div class="wrap">
-    <a class="brand" href="./">ZeroTrace</a>
+    <a class="brand" href="./">PurgeMark</a>
     <nav>
       <a href="#how">How it works</a>
       <a href="verify/">Verify</a>
-      <a href="https://github.com/spryzz3n/ZeroTrace">GitHub</a>
+      <a href="https://github.com/spryzz3n/PurgeMark">GitHub</a>
     </nav>
     <a class="btn primary" href="#download">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>
@@ -29,11 +29,11 @@
   <div class="hero">
     <div class="wrap">
       <div>
-        <h1>ZeroTrace</h1>
+        <h1>PurgeMark</h1>
         <p class="tagline">Erase a drive, then prove it.</p>
         <p class="lede">A bootable USB stick for wiping disks before they're sold, recycled or reused. It erases with the drive's own sanitize commands where it can, reads the disk back to check the old data is really gone, and hands you a signed certificate that anyone can verify.</p>
         <div class="actions">
-          <a class="btn primary" href="https://github.com/spryzz3n/ZeroTrace/releases/download/v0.1.0/zerotrace-live-amd64.iso">
+          <a class="btn primary" href="https://github.com/spryzz3n/PurgeMark/releases/download/v0.1.0/purgemark-live-amd64.iso">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>
             Download ISO
           </a>
@@ -63,7 +63,7 @@
     <div class="wrap">
       <div class="heading"><h2>Why</h2></div>
       <p>A lot of old laptops and drives sit in drawers instead of being reused, because their owners don't trust that wiping them works. They're often right. Deleting files or reformatting leaves the data recoverable, and overwriting an SSD from the outside can't reach all of its flash.</p>
-      <p>Most tools either overwrite and hope, or erase properly and give you nothing to show for it. ZeroTrace erases the way the drive is designed to be erased, then gives you something you can hand to a buyer or a recycler.</p>
+      <p>Most tools either overwrite and hope, or erase properly and give you nothing to show for it. PurgeMark erases the way the drive is designed to be erased, then gives you something you can hand to a buyer or a recycler.</p>
     </div>
   </section>
 
@@ -123,7 +123,7 @@
       <ul class="status">
         <li><span class="tag done">tested</span>Boots on UEFI and legacy BIOS, tested in VMs</li>
         <li><span class="tag done">tested</span>Overwrite and NVMe Format, each followed by a read-back check</li>
-        <li><span class="tag done">tested</span>Signed certificates, saved to a USB stick labelled <code>ZT-CERTS</code></li>
+        <li><span class="tag done">tested</span>Signed certificates, saved to a USB stick labelled <code>PM-CERTS</code></li>
         <li><span class="tag untested">untested</span>NVMe Sanitize and ATA SANITIZE: written, not yet tried on real hardware, never picked by default</li>
         <li><span class="tag planned">planned</span>An Android app for phones</li>
       </ul>
@@ -133,17 +133,17 @@
   <section id="download">
     <div class="wrap">
       <div class="heading"><h2>Download</h2></div>
-      <p>Write the ISO to a USB stick with Rufus, balenaEtcher or <code>dd</code>, and boot from it. To keep certificates after you power off, plug in a second stick formatted FAT32 or exFAT and labelled <code>ZT-CERTS</code>.</p>
+      <p>Write the ISO to a USB stick with Rufus, balenaEtcher or <code>dd</code>, and boot from it. To keep certificates after you power off, plug in a second stick formatted FAT32 or exFAT and labelled <code>PM-CERTS</code>.</p>
       <div class="actions" style="margin:22px 0 18px">
-        <a class="btn primary" href="https://github.com/spryzz3n/ZeroTrace/releases/download/v0.1.0/zerotrace-live-amd64.iso">
+        <a class="btn primary" href="https://github.com/spryzz3n/PurgeMark/releases/download/v0.1.0/purgemark-live-amd64.iso">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>
-          zerotrace-live-amd64.iso (851 MB)
+          purgemark-live-amd64.iso (851 MB)
         </a>
-        <a class="btn" href="https://github.com/spryzz3n/ZeroTrace/releases/tag/v0.1.0">Release notes</a>
+        <a class="btn" href="https://github.com/spryzz3n/PurgeMark/releases/tag/v0.1.0">Release notes</a>
       </div>
       <span class="label">SHA-256</span>
       <code class="checksum">5f9d611d2957c52ba0034b522131a49086332d7aa5b941cf9572fae041fe7358</code>
-      <p class="muted small">Source, build instructions and design notes are <a href="https://github.com/spryzz3n/ZeroTrace">on GitHub</a>, under GPL-3.0.</p>
+      <p class="muted small">Source, build instructions and design notes are <a href="https://github.com/spryzz3n/PurgeMark">on GitHub</a>, under GPL-3.0.</p>
     </div>
   </section>
 </main>

@@ -7,14 +7,14 @@
 
 #include <nlohmann/json.hpp>
 
-#include "zt/crypto.hpp"
-#include "zt/device.hpp"
-#include "zt/methods.hpp"
-#include "zt/verify.hpp"
+#include "pm/crypto.hpp"
+#include "pm/device.hpp"
+#include "pm/methods.hpp"
+#include "pm/verify.hpp"
 
-namespace zt {
+namespace pm {
 
-inline constexpr const char* kCertificateSchema = "zerotrace.certificate/v1";
+inline constexpr const char* kCertificateSchema = "purgemark.certificate/v1";
 inline constexpr const char* kToolVersion = "0.1.0";
 
 struct SanitizationRecord {
@@ -60,11 +60,11 @@ struct CertificateCheck {
 CertificateCheck verify_certificate(const nlohmann::json& cert,
                                     const std::optional<std::vector<std::uint8_t>>& trusted_public_key);
 
-// Writes "<dir>/zerotrace-<certificate_id>.json" (created exclusively, fsynced)
+// Writes "<dir>/purgemark-<certificate_id>.json" (created exclusively, fsynced)
 // and returns its path. Creates `dir` if needed.
 Result<std::string> save_certificate(const nlohmann::json& cert, const std::string& dir);
 
 // First 16 hex chars of SHA-256 over the raw public key.
 std::string key_id(std::span<const std::uint8_t> public_raw);
 
-}  // namespace zt
+}  // namespace pm

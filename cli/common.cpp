@@ -2,11 +2,11 @@
 
 #include <cstdio>
 
-namespace ztcli {
+namespace pmcli {
 
-zt::Result<Args> parse_args(const std::vector<std::string_view>& argv, const std::set<std::string>& with_value,
+pm::Result<Args> parse_args(const std::vector<std::string_view>& argv, const std::set<std::string>& with_value,
                             const std::set<std::string>& flags) {
-    using R = zt::Result<Args>;
+    using R = pm::Result<Args>;
     Args a;
     for (std::size_t i = 0; i < argv.size(); ++i) {
         const std::string arg(argv[i]);
@@ -42,4 +42,4 @@ std::string human_size(std::uint64_t bytes) {
 
 std::string or_dash(const std::string& s) { return s.empty() ? "-" : s; }
 
-}  // namespace ztcli
+}  // namespace pmcli

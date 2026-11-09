@@ -1,4 +1,4 @@
-#include "zt/crypto.hpp"
+#include "pm/crypto.hpp"
 
 #include <fcntl.h>
 #include <openssl/bio.h>
@@ -16,7 +16,7 @@
 #include <fstream>
 #include <iterator>
 
-namespace zt {
+namespace pm {
 
 namespace {
 
@@ -28,7 +28,7 @@ struct CtxFree {
 
 [[noreturn]] void crypto_failure(const char* what) {
     // Failing crypto primitives mean the process can't produce trustworthy output.
-    std::fprintf(stderr, "zt: fatal: OpenSSL %s failed\n", what);
+    std::fprintf(stderr, "pmark: fatal: OpenSSL %s failed\n", what);
     std::abort();
 }
 
@@ -235,4 +235,4 @@ void Keystream::fill(std::uint64_t offset, std::span<std::uint8_t> out) const {
     }
 }
 
-}  // namespace zt
+}  // namespace pm

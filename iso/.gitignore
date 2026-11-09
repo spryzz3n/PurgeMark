@@ -17,7 +17,7 @@ build.log
 # Generated at build time
 config/bootloaders/
 # Binaries copied in at build time
-config/includes.chroot/usr/local/bin/zt
-config/includes.chroot/usr/local/bin/zerotrace
+config/includes.chroot/usr/local/bin/pmark
+config/includes.chroot/usr/local/bin/purgemark
 *.modified_timestamps
 chroot.packages.*

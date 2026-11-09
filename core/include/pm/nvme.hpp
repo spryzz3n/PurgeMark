@@ -5,9 +5,9 @@
 #include <span>
 #include <string>
 
-#include "zt/result.hpp"
+#include "pm/result.hpp"
 
-namespace zt {
+namespace pm {
 
 // Fields of the NVMe Identify Controller data structure (CNS 01h) that matter
 // for sanitization. Offsets per NVM Express Base Specification 2.0.
@@ -73,4 +73,4 @@ enum class SanitizeAction : std::uint8_t { ExitFailureMode = 1, BlockErase = 2, 
 Result<bool> nvme_sanitize_start(int fd, SanitizeAction action);
 Result<NvmeSanitizeStatus> nvme_sanitize_status(int fd);
 
-}  // namespace zt
+}  // namespace pm

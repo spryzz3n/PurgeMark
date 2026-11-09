@@ -4,7 +4,7 @@ Every erase, successful or not, produces a JSON file like this (trimmed):
 
 ```json
 {
-  "schema": "zerotrace.certificate/v1",
+  "schema": "purgemark.certificate/v1",
   "certificate_id": "98998668-8234-4b63-9d6b-8438acaa8fe5",
   "issued_at": "2026-10-30T08:29:54Z",
   "result": "sanitized",
@@ -51,17 +51,17 @@ To keep the C++ and JavaScript implementations in exact agreement, certificates 
 
 It proves the file hasn't changed since it was signed. Who signed it depends on the key:
 
-- **operator-key**: a long-lived key made with `zt keygen`. Give the public half to whoever needs to check your certificates. They pass it as `--trusted-key` (or paste it into the browser verifier) and get a clear yes or no on whether you signed it.
-- **self-attested**: no key was given, so ZeroTrace made a one-off key for this certificate. That proves integrity, but anyone could have produced it. The certificate says so, and the verifiers say so too.
+- **operator-key**: a long-lived key made with `pmark keygen`. Give the public half to whoever needs to check your certificates. They pass it as `--trusted-key` (or paste it into the browser verifier) and get a clear yes or no on whether you signed it.
+- **self-attested**: no key was given, so PurgeMark made a one-off key for this certificate. That proves integrity, but anyone could have produced it. The certificate says so, and the verifiers say so too.
 
 The ISO deliberately ships without a signing key. Any key baked into a public image could be extracted, and then anyone could forge certificates with it.
 
 ## Checking one
 
 ```sh
-zt verify-cert zerotrace-....json --trusted-key operator.pub
+pmark verify-cert purgemark-....json --trusted-key operator.pub
 ```
 
 The exit status is 0 only if the signature is valid, the signer matches the trusted key (when one is given), and the certificate reports success.
 
-Or use the browser verifier at [zerotrace.skysec.org/verify](https://zerotrace.skysec.org/verify/), which does the same with Web Crypto without uploading the file. It's also in the repo as `verifier/index.html` and works opened straight from disk with no network access.
+Or use the browser verifier at [purgemark.skysec.org/verify](https://purgemark.skysec.org/verify/), which does the same with Web Crypto without uploading the file. It's also in the repo as `verifier/index.html` and works opened straight from disk with no network access.

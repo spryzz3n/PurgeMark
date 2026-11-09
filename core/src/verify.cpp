@@ -1,10 +1,10 @@
-#include "zt/verify.hpp"
+#include "pm/verify.hpp"
 
 #include <algorithm>
 #include <cstring>
 #include <random>
 
-namespace zt {
+namespace pm {
 
 namespace {
 
@@ -158,4 +158,4 @@ VerifyReport verify_changed(const Target& target, const SamplePlan& plan, const 
     return r;
 }
 
-}  // namespace zt
+}  // namespace pm

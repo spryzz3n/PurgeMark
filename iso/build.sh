@@ -1,5 +1,5 @@
 #!/bin/sh
-# Builds the ZeroTrace live ISO. Run as root on a Debian 13 (trixie) host:
+# Builds the PurgeMark live ISO. Run as root on a Debian 13 (trixie) host:
 #
 #   sudo apt install live-build cmake ninja-build g++ git libssl-dev nlohmann-json3-dev
 #   sudo iso/build.sh
@@ -24,8 +24,8 @@ cmake -S "$ROOT" -B "$BUILD" -G Ninja -DCMAKE_BUILD_TYPE=Release -DZT_BUILD_TEST
 cmake --build "$BUILD"
 
 BIN="$HERE/config/includes.chroot/usr/local/bin"
-install -m 0755 "$BUILD/zt" "$BUILD/zerotrace" "$BIN/"
-chmod 0755 "$BIN/zerotrace-kiosk" "$HERE/config/hooks/normal/"*.hook.chroot "$HERE/auto/"*
+install -m 0755 "$BUILD/pmark" "$BUILD/purgemark" "$BIN/"
+chmod 0755 "$BIN/purgemark-kiosk" "$HERE/config/hooks/normal/"*.hook.chroot "$HERE/auto/"*
 
 # live-build's boot menus wait forever (isolinux "timeout 0", no GRUB timeout).
 # A kiosk should boot unattended, so override both with a 5 second timeout.

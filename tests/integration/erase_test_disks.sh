@@ -5,9 +5,9 @@
 #
 # Disks are located by serial number so the script can't hit the wrong drive.
 # Used on a QEMU VM with:
-#   -device nvme,serial=ZTNVME0001   and two SATA disks with serials ZTSATA0001/2
+#   -device nvme,serial=PMNVME0001   and two SATA disks with serials PMSATA0001/2
 set -u
-ZT=${ZT:-$(dirname "$0")/../../build/zt}
+PMARK=${PMARK:-$(dirname "$0")/../../build/pmark}
 [ $# -eq 3 ] || { echo "usage: $0 NVME_SERIAL SATA_SERIAL SATA_SERIAL2" >&2; exit 2; }
 [ "$(id -u)" -eq 0 ] || { echo "needs root" >&2; exit 2; }
 
@@ -19,7 +19,7 @@ echo "test disks: nvme=$NVME sata0=$SATA0 sata1=$SATA1"
 W=$(mktemp -d)
 trap 'umount "$W/mnt" 2>/dev/null; rm -rf "$W"' EXIT
 mkdir -p "$W/certs" "$W/mnt"
-"$ZT" keygen "$W/op" >/dev/null
+"$PMARK" keygen "$W/op" >/dev/null
 FAIL=0
 expect() { if [ "$1" = "$2" ]; then echo "  ok: $3"; else echo "  FAIL: $3 (got $1, want $2)"; FAIL=1; fi; }
 
@@ -38,36 +38,36 @@ seed() {
 secrets() { dd if="$1" bs=4M iflag=direct status=none | tr '\0' '\n' | grep -a -c SECRET-CUSTOMER-RECORD; }
 
 echo "== NVMe: Sanitize refused when the controller lacks it"
-"$ZT" erase "$NVME" --method nvme-sanitize-crypto --experimental --confirm "$1" >/dev/null 2>&1
+"$PMARK" erase "$NVME" --method nvme-sanitize-crypto --experimental --confirm "$1" >/dev/null 2>&1
 expect $? 1 "unsupported method refused"
 
 echo "== NVMe: auto method"
 seed "$NVME"; expect "$(secrets "$NVME")" 6 "secrets planted"
-"$ZT" erase "$NVME" --confirm "$1" --key "$W/op.key" --out "$W/certs" >/dev/null 2>&1
+"$PMARK" erase "$NVME" --confirm "$1" --key "$W/op.key" --out "$W/certs" >/dev/null 2>&1
 expect $? 0 "erase + verification succeeded"
 expect "$(secrets "$NVME")" 0 "no secrets left"
 
 echo "== SATA: auto method"
 seed "$SATA0"; expect "$(secrets "$SATA0")" 6 "secrets planted"
-"$ZT" erase "$SATA0" --confirm "$2" --key "$W/op.key" --out "$W/certs" >/dev/null 2>&1
+"$PMARK" erase "$SATA0" --confirm "$2" --key "$W/op.key" --out "$W/certs" >/dev/null 2>&1
 expect $? 0 "erase + verification succeeded"
 expect "$(secrets "$SATA0")" 0 "no secrets left"
 
 echo "== SATA: mounted disk refused"
 mkfs.ext4 -q -F "$SATA1" && mount "$SATA1" "$W/mnt"
-"$ZT" erase "$SATA1" --confirm "$3" >/dev/null 2>&1
+"$PMARK" erase "$SATA1" --confirm "$3" >/dev/null 2>&1
 expect $? 1 "mounted disk refused"
 umount "$W/mnt"
 
 echo "== Wrong confirmation writes nothing"
 seed "$SATA1"
-"$ZT" erase "$SATA1" --confirm WRONG >/dev/null 2>&1
+"$PMARK" erase "$SATA1" --confirm WRONG >/dev/null 2>&1
 expect $? 1 "mismatched confirmation refused"
 expect "$(secrets "$SATA1")" 6 "data untouched"
 
 echo "== Certificates"
 for c in "$W"/certs/*.json; do
-    "$ZT" verify-cert "$c" --trusted-key "$W/op.pub" >/dev/null
+    "$PMARK" verify-cert "$c" --trusted-key "$W/op.pub" >/dev/null
     expect $? 0 "$(basename "$c") verifies"
 done
 

@@ -1,8 +1,8 @@
-# ZeroTrace
+# PurgeMark
 
-Website: [zerotrace.skysec.org](https://zerotrace.skysec.org)
+Website: [purgemark.skysec.org](https://purgemark.skysec.org)
 
-ZeroTrace wipes drives and then proves it. You boot a small Linux ISO, pick a disk, and it erases the disk using the drive's own sanitize commands where it can (falling back to an overwrite where it can't), reads the disk back to check the old data is really gone, and writes out a certificate signed with Ed25519 that anyone can verify later.
+PurgeMark wipes drives and then proves it. You boot a small Linux ISO, pick a disk, and it erases the disk using the drive's own sanitize commands where it can (falling back to an overwrite where it can't), reads the disk back to check the old data is really gone, and writes out a certificate signed with Ed25519 that anyone can verify later.
 
 I started this for Smart India Hackathon 2025 (problem SIH25070, secure data wiping for IT asset recycling). That version didn't work, so this is a rewrite from scratch. [docs/history.md](docs/history.md) has the story.
 
@@ -10,9 +10,9 @@ I started this for Smart India Hackathon 2025 (problem SIH25070, secure data wip
 
 ## Download
 
-**[zerotrace-live-amd64.iso](https://github.com/spryzz3n/ZeroTrace/releases/download/v0.1.0/zerotrace-live-amd64.iso)** (v0.1.0, 851 MB, pre-release)
+**[purgemark-live-amd64.iso](https://github.com/spryzz3n/PurgeMark/releases/download/v0.1.0/purgemark-live-amd64.iso)** (v0.1.0, 851 MB, pre-release)
 
-SHA-256 `5f9d611d2957c52ba0034b522131a49086332d7aa5b941cf9572fae041fe7358` ([checksum file](https://github.com/spryzz3n/ZeroTrace/releases/download/v0.1.0/zerotrace-live-amd64.iso.sha256), [release notes](https://github.com/spryzz3n/ZeroTrace/releases/tag/v0.1.0))
+SHA-256 `5f9d611d2957c52ba0034b522131a49086332d7aa5b941cf9572fae041fe7358` ([checksum file](https://github.com/spryzz3n/PurgeMark/releases/download/v0.1.0/purgemark-live-amd64.iso.sha256), [release notes](https://github.com/spryzz3n/PurgeMark/releases/tag/v0.1.0))
 
 Write it to a USB stick with Rufus, balenaEtcher or `dd`, and boot from it. Read the status section below before using it on anything real.
 
@@ -45,28 +45,28 @@ More detail is in [docs/design.md](docs/design.md).
 
 ## Using it
 
-On the live ISO everything happens in the terminal UI on tty1. To keep certificates after power-off, plug in a second USB stick labelled `ZT-CERTS` (FAT32 or exFAT). If it holds an `operator.key`, that key is used to sign. Without the stick the certificates stay in RAM and the UI warns you about it. Press `p` twice to power off. Ctrl+Alt+F2 gives you a root shell.
+On the live ISO everything happens in the terminal UI on tty1. To keep certificates after power-off, plug in a second USB stick labelled `PM-CERTS` (FAT32 or exFAT). If it holds an `operator.key`, that key is used to sign. Without the stick the certificates stay in RAM and the UI warns you about it. Press `p` twice to power off. Ctrl+Alt+F2 gives you a root shell.
 
 ![Confirming an erase](docs/images/confirm-erase.png)
 
 The same pieces work from the command line on any Linux box:
 
 ```sh
-zt list                                    # disks, and why each one is blocked
-sudo zt probe                              # what each drive supports
-zt keygen ~/operator                       # operator.key (keep it safe) + operator.pub
-sudo zt erase sdb --key ~/operator.key --operator "Your Name" --out certs/
-zt verify-cert certs/zerotrace-*.json --trusted-key ~/operator.pub
-sudo zerotrace                             # the terminal UI
+pmark list                                    # disks, and why each one is blocked
+sudo pmark probe                              # what each drive supports
+pmark keygen ~/operator                       # operator.key (keep it safe) + operator.pub
+sudo pmark erase sdb --key ~/operator.key --operator "Your Name" --out certs/
+pmark verify-cert certs/purgemark-*.json --trusted-key ~/operator.pub
+sudo purgemark                             # the terminal UI
 ```
 
-`zt erase` picks the best tested method by default. `--method` chooses one explicitly, and the untested ones also need `--experimental`. To try it without a spare disk, `zt erase --image disk.img` works on an image file or a loop device.
+`pmark erase` picks the best tested method by default. `--method` chooses one explicitly, and the untested ones also need `--experimental`. To try it without a spare disk, `pmark erase --image disk.img` works on an image file or a loop device.
 
 ### Verifying a certificate
 
-The easiest way is **[zerotrace.skysec.org/verify](https://zerotrace.skysec.org/verify/)**. Drop the certificate file on the page and it tells you whether the signature is valid, what drive it covers, how it was erased, and whether the check passed. If the person who erased the drive gave you their public key, paste it in to confirm the certificate came from them. The check runs entirely in your browser, so the file is never uploaded anywhere.
+The easiest way is **[purgemark.skysec.org/verify](https://purgemark.skysec.org/verify/)**. Drop the certificate file on the page and it tells you whether the signature is valid, what drive it covers, how it was erased, and whether the check passed. If the person who erased the drive gave you their public key, paste it in to confirm the certificate came from them. The check runs entirely in your browser, so the file is never uploaded anywhere.
 
-The same page is in this repo as [verifier/index.html](verifier/index.html) if you'd rather run it offline. It works opened straight from disk. From the command line, `zt verify-cert` does the same thing.
+The same page is in this repo as [verifier/index.html](verifier/index.html) if you'd rather run it offline. It works opened straight from disk. From the command line, `pmark verify-cert` does the same thing.
 
 ## Building
 
@@ -93,8 +93,8 @@ That builds the binaries, drops them into the image and produces `iso/live-image
 ```
 core/      the library: discovery, safety checks, NVMe/ATA commands, erase,
            verification, canonical JSON, certificates
-cli/       the zt command
-tui/       the zerotrace terminal UI
+cli/       the pmark command
+tui/       the purgemark terminal UI
 verifier/  browser verifier and its cross-implementation test
 iso/       live-build config, kiosk service, boot settings
 tests/     unit tests, plus the destructive integration test

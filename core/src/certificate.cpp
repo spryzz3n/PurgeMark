@@ -1,4 +1,4 @@
-#include "zt/certificate.hpp"
+#include "pm/certificate.hpp"
 
 #include <fcntl.h>
 #include <unistd.h>
@@ -7,9 +7,9 @@
 #include <cstring>
 #include <filesystem>
 
-#include "zt/canonical_json.hpp"
+#include "pm/canonical_json.hpp"
 
-namespace zt {
+namespace pm {
 
 using nlohmann::json;
 
@@ -63,7 +63,7 @@ json make_certificate_body(const CertificateInput& in) {
         {"certificate_id", uuid_v4()},
         {"issued_at", utc_now_iso8601()},
         {"result", success ? "sanitized" : "failed"},
-        {"tool", {{"name", "zerotrace"}, {"version", kToolVersion}}},
+        {"tool", {{"name", "purgemark"}, {"version", kToolVersion}}},
         {"device",
          {{"model", d.model},
           {"serial", d.serial},
@@ -141,7 +141,7 @@ Result<std::string> save_certificate(const json& cert, const std::string& dir) {
 
     const auto id = cert.find("certificate_id");
     if (id == cert.end() || !id->is_string()) return R::fail("certificate has no id");
-    const std::string path = (std::filesystem::path(dir) / ("zerotrace-" + id->get<std::string>() + ".json")).string();
+    const std::string path = (std::filesystem::path(dir) / ("purgemark-" + id->get<std::string>() + ".json")).string();
     const std::string text = cert.dump(2) + "\n";
 
     // The certificate may be the only record of the erase: make sure it hits the disk.
@@ -164,4 +164,4 @@ CertificateCheck verify_certificate(const json& cert, const std::optional<std::v
     }
 }
 
-}  // namespace zt
+}  // namespace pm

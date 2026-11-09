@@ -6,9 +6,9 @@
 #include <span>
 #include <string>
 
-#include "zt/result.hpp"
+#include "pm/result.hpp"
 
-namespace zt {
+namespace pm {
 
 // An erase/verify target: a whole block device, or a regular file (image files
 // in tests and dry runs). Block devices are opened with O_EXCL, which the
@@ -66,4 +66,4 @@ private:
     std::size_t size_;
 };
 
-}  // namespace zt
+}  // namespace pm

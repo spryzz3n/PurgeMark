@@ -7,9 +7,9 @@
 #include <string_view>
 #include <vector>
 
-#include "zt/result.hpp"
+#include "pm/result.hpp"
 
-namespace ztcli {
+namespace pmcli {
 
 struct Args {
     std::vector<std::string> positional;
@@ -24,7 +24,7 @@ struct Args {
 };
 
 // Options listed in `with_value` consume the next argument; those in `flags` don't.
-zt::Result<Args> parse_args(const std::vector<std::string_view>& argv, const std::set<std::string>& with_value,
+pm::Result<Args> parse_args(const std::vector<std::string_view>& argv, const std::set<std::string>& with_value,
                             const std::set<std::string>& flags);
 
 std::string human_size(std::uint64_t bytes);
@@ -36,4 +36,4 @@ int cmd_erase(const std::vector<std::string_view>& argv);
 int cmd_keygen(const std::vector<std::string_view>& argv);
 int cmd_verify_cert(const std::vector<std::string_view>& argv);
 
-}  // namespace ztcli
+}  // namespace pmcli
