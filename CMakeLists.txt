@@ -66,6 +66,16 @@ if(PM_BUILD_TUI)
   target_link_libraries(purgemark PRIVATE pmcore pm_warnings ftxui::component ftxui::dom ftxui::screen)
 endif()
 
+# Graphical UI for the live ISO. Built when GTK4 is installed.
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+  pkg_check_modules(GTK4 QUIET IMPORTED_TARGET gtk4)
+endif()
+if(GTK4_FOUND)
+  add_executable(purgemark-gui gui/main.cpp)
+  target_link_libraries(purgemark-gui PRIVATE pmcore PkgConfig::GTK4)
+endif()
+
 if(PM_BUILD_TESTS)
   enable_testing()
   foreach(t device identify crypto erase)
