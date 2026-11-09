@@ -10,9 +10,8 @@ I started this for Smart India Hackathon 2025 (problem SIH25070, secure data wip
 
 ## Download
 
-**[purgemark-live-amd64.iso](https://github.com/spryzz3n/PurgeMark/releases/download/v0.1.0/purgemark-live-amd64.iso)** (v0.1.0, 851 MB, pre-release)
+**[Get the ISO from the releases page](https://github.com/spryzz3n/PurgeMark/releases/latest)**. Each release lists its SHA-256 checksum.
 
-SHA-256 `5f9d611d2957c52ba0034b522131a49086332d7aa5b941cf9572fae041fe7358` ([checksum file](https://github.com/spryzz3n/PurgeMark/releases/download/v0.1.0/purgemark-live-amd64.iso.sha256), [release notes](https://github.com/spryzz3n/PurgeMark/releases/tag/v0.1.0))
 
 Write it to a USB stick with Rufus, balenaEtcher or `dd`, and boot from it. Read the status section below before using it on anything real.
 
