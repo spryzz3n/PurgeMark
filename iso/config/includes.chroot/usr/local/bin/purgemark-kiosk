@@ -1,5 +1,6 @@
 #!/bin/sh
-# Launches the PurgeMark TUI on tty1.
+# Launches the PurgeMark UI on tty1: the GTK app under Cage, or the terminal UI
+# if the graphical one can't start.
 #
 # Certificates must outlive the live session, so they go to a separate USB
 # stick labelled PM-CERTS (FAT32 or exFAT). An operator signing key on that
@@ -8,30 +9,40 @@
 
 CERTS_DEV=$(blkid -L PM-CERTS 2>/dev/null || true)
 MNT=/mnt/pm-certs
-OUT=/run/purgemark/certificates
+RUN=/run/purgemark
+OUT=$RUN/certificates
 KEY=
+VOLATILE=--certs-volatile
 
 if [ -n "$CERTS_DEV" ]; then
     mkdir -p "$MNT"
     if mountpoint -q "$MNT" || mount "$CERTS_DEV" "$MNT"; then
         OUT="$MNT/certificates"
-        [ -f "$MNT/operator.key" ] && KEY="$MNT/operator.key"
+        VOLATILE=
+        [ -f "$MNT/operator.key" ] && KEY="--key $MNT/operator.key"
     fi
 fi
 mkdir -p "$OUT"
+mkdir -p -m 700 "$RUN/xdg"
+
+# --experimental lists the untested firmware sanitize methods (marked as such);
+# the UI still preselects a tested method.
+STARTED=$RUN/gui-started
+rm -f "$STARTED"
+XDG_RUNTIME_DIR=$RUN/xdg WLR_RENDERER=pixman GSK_RENDERER=cairo \
+    cage -s -- /usr/local/bin/purgemark-gui --kiosk --experimental --out "$OUT" $KEY $VOLATILE \
+        --started-file "$STARTED"
+
+# Cage's exit status says little, so go by whether the window ever came up.
+# If it did, exit and let systemd start us again, which also picks up a new stick.
+[ -f "$STARTED" ] && exit 0
 
 clear
-if [ "$OUT" = /run/purgemark/certificates ]; then
+if [ -n "$VOLATILE" ]; then
     printf '\n  No USB stick labelled PM-CERTS found.\n'
     printf '  Certificates will be kept in RAM and LOST at power-off.\n\n'
     printf '  Insert one and press r to rescan, or press Enter to continue anyway.\n'
     read -r answer
-    [ "$answer" = r ] && exit 0  # systemd restarts us and we look again
+    [ "$answer" = r ] && exit 0
 fi
-
-# --experimental lists the untested firmware sanitize methods (marked as such);
-# the UI still preselects a tested method.
-if [ -n "$KEY" ]; then
-    exec /usr/local/bin/purgemark --kiosk --experimental --out "$OUT" --key "$KEY"
-fi
-exec /usr/local/bin/purgemark --kiosk --experimental --out "$OUT"
+exec /usr/local/bin/purgemark --kiosk --experimental --out "$OUT" $KEY
