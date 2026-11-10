@@ -15,7 +15,7 @@
 namespace pm {
 
 inline constexpr const char* kCertificateSchema = "purgemark.certificate/v1";
-inline constexpr const char* kToolVersion = "0.1.0";
+inline constexpr const char* kToolVersion = "0.3.0";
 
 struct SanitizationRecord {
     Method method = Method::Overwrite;
