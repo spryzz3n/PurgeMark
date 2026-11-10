@@ -37,6 +37,8 @@ A disk is refused if it's:
 - used as active swap
 - held by device-mapper, md RAID, LVM or LUKS
 
+NVMe Sanitize always acts on the whole controller, and Format does too when the controller's FNA field says so. For those methods the same checks run on every other namespace of the controller, and the method is refused if any of them is in use. Overwrite and per-namespace Format only need the chosen namespace to be free. The check runs once when drives are listed and again right before the erase starts.
+
 The operator also has to type the drive's serial number. The live system boots with `noswap`, doesn't auto-mount anything, and has udisks, LVM and mdadm masked, so the disks it's about to erase stay untouched.
 
 ## Failures stay contained

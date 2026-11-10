@@ -23,10 +23,11 @@ Early, and not something to point at a disk you care about yet. What exists and 
 - software overwrite and NVMe Format, each followed by a read-back check
 - signed certificates, a command-line verifier and a browser verifier
 - refusing to touch disks that are mounted, used as swap, or part of LVM/RAID/LUKS
+- refusing NVMe erases that reach the whole controller while another namespace on it is in use
 
 Written but not yet run on real hardware: NVMe Sanitize and ATA SANITIZE. QEMU doesn't emulate either, so they're marked experimental. The UI lists them when a drive supports them but never picks them by default. ATA Security Erase isn't implemented, on purpose: if it fails halfway the drive can stay password-locked.
 
-An Android app for phones is planned and will come later.
+An Android app for phones is in progress.
 
 ## How it works
 
