@@ -185,6 +185,38 @@ int main() {
         }
     }
 
+    // NVMe: a busy sibling namespace rules out whatever reaches the whole controller.
+    {
+        pm::NvmeIdentify id{};
+        id.sanitize_crypto = true;
+        id.sanitize_block = true;
+        id.sanitize_overwrite = true;
+        id.format_supported = true;
+        id.format_crypto_erase = true;
+        const std::vector<std::string> busy = {"nvme0n2 mounted at /data"};
+
+        auto m = pm::rank_methods({}, id, std::nullopt, busy);
+        for (const auto method : {pm::Method::NvmeSanitizeCrypto, pm::Method::NvmeSanitizeBlock,
+                                  pm::Method::NvmeSanitizeOverwrite}) {
+            const auto* c = find(m, method);
+            CHECK(c && !c->available && c->note.find("nvme0n2 mounted") != std::string::npos);
+        }
+        CHECK(find(m, pm::Method::NvmeFormatCrypto)->available);  // FNA clear: stays in this namespace
+        CHECK(find(m, pm::Method::Overwrite)->available);
+
+        for (const bool bit0 : {true, false}) {
+            pm::NvmeIdentify all = id;
+            all.format_all_namespaces = bit0;
+            all.secure_erase_all_namespaces = !bit0;
+            m = pm::rank_methods({}, all, std::nullopt, busy);
+            CHECK(!find(m, pm::Method::NvmeFormatCrypto)->available);
+            CHECK(m.front().method == pm::Method::Overwrite);  // the only one left
+        }
+
+        m = pm::rank_methods({}, id, std::nullopt);  // nothing busy
+        CHECK(find(m, pm::Method::NvmeSanitizeCrypto)->available);
+    }
+
     // NVMe: Identify Namespace -> Format CDW10 keeps the current LBA format and PI settings
     {
         pm::NvmeIdentifyData ns{};

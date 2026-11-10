@@ -54,7 +54,7 @@ ProbeResult probe(const Device& dev) {
         else if (r.nvme) r.device.serial = r.nvme->serial;
     }
 
-    r.methods = rank_methods(r.device, r.nvme, r.ata);
+    r.methods = rank_methods(r.device, r.nvme, r.ata, dev.bus == Bus::Nvme ? sibling_blockers(dev) : std::vector<std::string>{});
     return r;
 }
 

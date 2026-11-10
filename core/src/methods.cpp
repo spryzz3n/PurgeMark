@@ -86,6 +86,20 @@ Level nominal_level(Method m, bool ssd) {
     return Level::Clear;
 }
 
+bool is_controller_wide(Method m, const NvmeIdentify& id) {
+    switch (m) {
+        case Method::NvmeSanitizeCrypto:
+        case Method::NvmeSanitizeBlock:
+        case Method::NvmeSanitizeOverwrite:
+            return true;
+        case Method::NvmeFormatCrypto:
+        case Method::NvmeFormatUserData:
+            return id.format_all_namespaces || id.secure_erase_all_namespaces;
+        default:
+            return false;
+    }
+}
+
 namespace {
 
 void add_nvme(std::vector<Candidate>& out, const NvmeIdentify& id) {
@@ -93,7 +107,7 @@ void add_nvme(std::vector<Candidate>& out, const NvmeIdentify& id) {
     const std::string all_ns = id.active_namespaces > 1
                                    ? "erases all " + std::to_string(id.active_namespaces) + " namespaces"
                                    : "";
-    const std::string fmt_scope = id.format_all_namespaces ? all_ns : "";
+    const std::string fmt_scope = is_controller_wide(Method::NvmeFormatCrypto, id) ? all_ns : "";
 
     out.push_back({Method::NvmeSanitizeCrypto, {}, id.sanitize_crypto,
                    id.sanitize_crypto ? all_ns : "not supported by controller"});
@@ -147,10 +161,18 @@ void add_ata(std::vector<Candidate>& out, const AtaIdentify& id, bool ssd) {
 }  // namespace
 
 std::vector<Candidate> rank_methods(const Device& dev, const std::optional<NvmeIdentify>& nvme,
-                                    const std::optional<AtaIdentify>& ata) {
+                                    const std::optional<AtaIdentify>& ata,
+                                    const std::vector<std::string>& sibling_in_use) {
     std::vector<Candidate> out;
     const bool ssd = ata ? ata->non_rotating : !dev.rotational;
-    if (nvme) add_nvme(out, *nvme);
+    if (nvme) {
+        add_nvme(out, *nvme);
+        for (auto& c : out) {
+            if (sibling_in_use.empty() || !c.available || !is_controller_wide(c.method, *nvme)) continue;
+            c.available = false;
+            c.note = "would also erase " + sibling_in_use.front();
+        }
+    }
     if (ata) add_ata(out, *ata, ssd);
 
     // Overwrite always applies but cannot reach remapped or over-provisioned

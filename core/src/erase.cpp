@@ -11,6 +11,7 @@
 #include "pm/blockio.hpp"
 #include "pm/crypto.hpp"
 #include "pm/nvme.hpp"
+#include "pm/safety.hpp"
 
 namespace pm {
 
@@ -144,6 +145,22 @@ void run_firmware(const EraseJob& job, CertificateInput& in) {
     if ((is_nvme_method(job.method) && in.device.bus != Bus::Nvme) || (is_ata_method(job.method) && !ata_bus)) {
         rec.error = to_string(job.method) + " does not apply to a " + to_string(in.device.bus) + " device";
         return;
+    }
+
+    // The callers only check the chosen namespace, so look at the others right before starting.
+    if (is_nvme_method(job.method)) {
+        const auto raw = nvme_identify_ctrl_raw(job.target_path);
+        const auto id = raw ? parse_nvme_identify_ctrl(raw.value()) : Result<NvmeIdentify>::fail(raw.error());
+        if (!id) {
+            rec.error = "cannot tell what this erase would reach: " + id.error();
+            return;
+        }
+        if (is_controller_wide(job.method, id.value())) {
+            if (const auto busy = sibling_blockers(in.device); !busy.empty()) {
+                rec.error = to_string(job.method) + " would also erase " + busy.front();
+                return;
+            }
+        }
     }
 
     const auto target = Target::open(job.target_path, Target::Mode::Write);

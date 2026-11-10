@@ -123,6 +123,33 @@ int main() {
     CHECK(find("sdd") == nullptr);
     CHECK(find("nvme0c0n1") == nullptr);
 
+    // A mounted nvme1n2 counts against nvme1n1, but not against nvme10n1, whose
+    // name merely starts the same way.
+    {
+        const fs::path sys2 = root / "sys2";
+        add_disk(sys2, "pci0000:00/0000:00:1c.0/nvme/nvme1", "nvme1n1", "2048", false);
+        add_disk(sys2, "pci0000:00/0000:00:1c.0/nvme/nvme1", "nvme1n2", "2048", false);
+        add_disk(sys2, "pci0000:00/0000:00:1b.0/nvme/nvme10", "nvme10n1", "2048", false);
+        add_disk(sys2, "pci0000:00/0000:00:17.0/ata2/host1/target1:0:0/1:0:0:0", "sdf", "2048", false);
+        const fs::path mounts2 = root / "mounts2";
+        put(mounts2, "/dev/nvme1n2 /data ext4 rw 0 0");
+        const fs::path swaps2 = root / "swaps2";
+        put(swaps2, "Filename\t\t\t\tType\t\tSize\t\tUsed\t\tPriority");
+        const pm::SystemRoots roots{sys2, mounts2, swaps2};
+
+        const auto d1 = pm::find_device("nvme1n1", roots);
+        CHECK(d1.has_value());
+        if (d1) {
+            CHECK(pm::erase_blockers(*d1).empty());  // the namespace itself is idle
+            const auto busy = pm::sibling_blockers(*d1, roots);
+            CHECK(busy.size() == 1 && busy.front() == "nvme1n2 mounted at /data");
+        }
+        const auto d10 = pm::find_device("nvme10n1", roots);
+        CHECK(d10 && pm::sibling_blockers(*d10, roots).empty());
+        const auto sata = pm::find_device("sdf", roots);
+        CHECK(sata && pm::sibling_blockers(*sata, roots).empty());
+    }
+
     fs::remove_all(root);
     return finish("device");
 }
