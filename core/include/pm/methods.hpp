@@ -52,7 +52,13 @@ struct Candidate {
 // All methods that apply to this drive, best first; unavailable ones sort last.
 // Levels are deliberately conservative: where the standard depends on the
 // vendor's implementation (e.g. ATA Security Erase on SSDs), we claim Clear.
+// sibling_in_use lists why other namespaces on the same controller must not be
+// touched; methods that reach the whole controller become unavailable if it isn't empty.
 std::vector<Candidate> rank_methods(const Device& dev, const std::optional<NvmeIdentify>& nvme,
-                                    const std::optional<AtaIdentify>& ata);
+                                    const std::optional<AtaIdentify>& ata,
+                                    const std::vector<std::string>& sibling_in_use = {});
+
+// Sanitize always acts on the whole controller; Format does when FNA says so.
+bool is_controller_wide(Method m, const NvmeIdentify& id);
 
 }  // namespace pm
