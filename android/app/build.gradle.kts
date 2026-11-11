@@ -10,7 +10,9 @@ android {
     defaultConfig {
         applicationId = "com.purgemark.mobile"
         minSdk = 29 // Android 10: file-based encryption is mandatory from here on
-        targetSdk = 36
+        // Stays at 33: from 34 on, wipeData() from a device admin only removes the calling user,
+        // and wipeDevice() needs a permission normal apps can't hold.
+        targetSdk = 33
         versionCode = 1
         versionName = "0.1.0"
     }
