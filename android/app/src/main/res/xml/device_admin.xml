@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The only policy PurgeMark asks for: erasing the device. -->
+<device-admin>
+    <uses-policies>
+        <wipe-data />
+    </uses-policies>
+</device-admin>
