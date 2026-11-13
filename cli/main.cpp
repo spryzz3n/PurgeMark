@@ -18,7 +18,11 @@ constexpr std::string_view kUsage =
     "\n"
     "certificates:\n"
     "  keygen PREFIX          create an Ed25519 operator signing key\n"
-    "  verify-cert CERT.json  check a certificate's signature and contents\n";
+    "  verify-cert CERT.json  check a certificate's signature and contents\n"
+    "\n"
+    "phones:\n"
+    "  android begin          issue a one-time challenge as a QR code\n"
+    "  android verify RECORD  check a phone's signed pre-wipe record\n";
 
 }  // namespace
 
@@ -35,6 +39,7 @@ int main(int argc, char** argv) {
     if (cmd == "erase") return pmcli::cmd_erase(rest);
     if (cmd == "keygen") return pmcli::cmd_keygen(rest);
     if (cmd == "verify-cert") return pmcli::cmd_verify_cert(rest);
+    if (cmd == "android") return pmcli::cmd_android(rest);
     if (cmd == "-h" || cmd == "--help") {
         std::cout << kUsage;
         return 0;

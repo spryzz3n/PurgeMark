@@ -35,5 +35,6 @@ int cmd_probe(const std::vector<std::string_view>& argv);
 int cmd_erase(const std::vector<std::string_view>& argv);
 int cmd_keygen(const std::vector<std::string_view>& argv);
 int cmd_verify_cert(const std::vector<std::string_view>& argv);
+int cmd_android(const std::vector<std::string_view>& argv);
 
 }  // namespace pmcli

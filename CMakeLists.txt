@@ -22,6 +22,7 @@ target_compile_options(pm_warnings INTERFACE -Wall -Wextra -Wpedantic -Wshadow -
 
 add_library(pmcore
   core/src/ata.cpp
+  core/src/android_record.cpp
   core/src/blockio.cpp
   core/src/canonical_json.cpp
   core/src/certificate.cpp
@@ -44,6 +45,7 @@ add_executable(pmark
   cli/cmd_inspect.cpp
   cli/cmd_erase.cpp
   cli/cmd_cert.cpp
+  cli/cmd_android.cpp
 )
 target_link_libraries(pmark PRIVATE pmcore pm_warnings)
 
@@ -78,7 +80,7 @@ endif()
 
 if(PM_BUILD_TESTS)
   enable_testing()
-  foreach(t device identify crypto erase)
+  foreach(t device identify crypto erase android)
     add_executable(test_${t} tests/test_${t}.cpp)
     target_link_libraries(test_${t} PRIVATE pmcore pm_warnings)
     add_test(NAME ${t} COMMAND test_${t})
