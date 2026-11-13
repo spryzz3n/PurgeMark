@@ -26,3 +26,6 @@ usbutils
 dosfstools
 exfatprogs
 util-linux
+
+# QR code for pairing a phone with `pmark android begin`
+qrencode
