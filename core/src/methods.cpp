@@ -100,6 +100,26 @@ bool is_controller_wide(Method m, const NvmeIdentify& id) {
     }
 }
 
+bool is_ata_sanitize(Method m) {
+    return m == Method::AtaSanitizeCrypto || m == Method::AtaSanitizeBlock || m == Method::AtaSanitizeOverwrite;
+}
+
+bool ata_sanitize_supported(Method m, const AtaIdentify& id) {
+    if (!id.sanitize_supported) return false;
+    switch (m) {
+        case Method::AtaSanitizeCrypto: return id.sanitize_crypto;
+        case Method::AtaSanitizeBlock: return id.sanitize_block;
+        case Method::AtaSanitizeOverwrite: return id.sanitize_overwrite;
+        default: return false;
+    }
+}
+
+const char* const kUsbSanitizeNote = "behind a USB bridge; needs --allow-usb-sanitize";
+
+bool usb_sanitize_blocked(const Device& dev, Method m) {
+    return dev.bus == Bus::Usb && is_ata_sanitize(m);
+}
+
 namespace {
 
 void add_nvme(std::vector<Candidate>& out, const NvmeIdentify& id) {
@@ -173,7 +193,14 @@ std::vector<Candidate> rank_methods(const Device& dev, const std::optional<NvmeI
             c.note = "would also erase " + sibling_in_use.front();
         }
     }
-    if (ata) add_ata(out, *ata, ssd);
+    if (ata) {
+        add_ata(out, *ata, ssd);
+        for (auto& c : out) {
+            if (!c.available || !usb_sanitize_blocked(dev, c.method)) continue;
+            c.available = false;
+            c.note = kUsbSanitizeNote;
+        }
+    }
 
     // Overwrite always applies but cannot reach remapped or over-provisioned
     // blocks, so it never reaches Purge.

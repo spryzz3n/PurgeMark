@@ -61,4 +61,14 @@ std::vector<Candidate> rank_methods(const Device& dev, const std::optional<NvmeI
 // Sanitize always acts on the whole controller; Format does when FNA says so.
 bool is_controller_wide(Method m, const NvmeIdentify& id);
 
+bool is_ata_sanitize(Method m);
+bool ata_sanitize_supported(Method m, const AtaIdentify& id);
+
+// ATA SANITIZE through a USB bridge stays off unless the operator overrides it.
+// Many bridges drop the command, time out on it, or reset part way through,
+// which can leave the drive stuck in a sanitize-failed state. rank_methods
+// marks these unavailable and run_erase refuses them without the override.
+bool usb_sanitize_blocked(const Device& dev, Method m);
+extern const char* const kUsbSanitizeNote;
+
 }  // namespace pm

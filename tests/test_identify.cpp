@@ -108,6 +108,17 @@ int main() {
             const auto* ow = find(m, pm::Method::AtaSanitizeOverwrite);
             CHECK(ow && !ow->available);
             CHECK(m.back().available == false);  // unavailable ones sort last
+
+            // Same drive in a USB enclosure: SANITIZE is listed but switched off.
+            dev.bus = pm::Bus::Usb;
+            const auto usb = pm::rank_methods(dev, std::nullopt, r.value());
+            const auto* sc = find(usb, pm::Method::AtaSanitizeCrypto);
+            CHECK(sc && !sc->available && sc->note == pm::kUsbSanitizeNote);
+            CHECK(usb.front().available && !pm::is_ata_sanitize(usb.front().method));
+            const auto* uow = find(usb, pm::Method::AtaSanitizeOverwrite);
+            CHECK(uow && uow->note != pm::kUsbSanitizeNote);  // unsupported stays unsupported
+            CHECK(pm::ata_sanitize_supported(pm::Method::AtaSanitizeCrypto, r.value()));
+            CHECK(!pm::ata_sanitize_supported(pm::Method::AtaSanitizeOverwrite, r.value()));
         }
     }
 

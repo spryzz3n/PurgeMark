@@ -190,6 +190,15 @@ static void test_run_erase_to_certificate(const fs::path& dir) {
         const auto r = pm::run_erase(job);
         CHECK(!r.sanitization.completed && r.sanitization.error.find("does not apply") != std::string::npos);
     }
+    // A drive behind a USB bridge: ATA SANITIZE is refused even with --experimental.
+    job.device.bus = pm::Bus::Usb;
+    for (const auto m : {pm::Method::AtaSanitizeCrypto, pm::Method::AtaSanitizeBlock, pm::Method::AtaSanitizeOverwrite}) {
+        job.method = m;
+        const auto r = pm::run_erase(job);
+        CHECK(!r.sanitization.completed && r.sanitization.error.find("USB bridge") != std::string::npos);
+    }
+    job.device.bus = pm::Bus::Unknown;
+
     job.method = pm::Method::Overwrite;
     CHECK(pm::run_erase(job).verification.passed());  // overwrite still works afterwards
 

@@ -94,10 +94,6 @@ Result<bool> run_nvme(const Target& t, const EraseJob& job) {
     }
 }
 
-bool is_ata_method(Method m) {
-    return m == Method::AtaSanitizeCrypto || m == Method::AtaSanitizeBlock || m == Method::AtaSanitizeOverwrite;
-}
-
 // Issues ATA SANITIZE through SCSI/ATA Translation and waits for it to finish.
 Result<bool> run_ata(const Target& t, const EraseJob& job) {
     const AtaSanitizeAction action = job.method == Method::AtaSanitizeCrypto  ? AtaSanitizeAction::CryptoScramble
@@ -142,8 +138,12 @@ void run_firmware(const EraseJob& job, CertificateInput& in) {
         return;
     }
     const bool ata_bus = in.device.bus == Bus::Sata || in.device.bus == Bus::Usb || in.device.bus == Bus::Scsi;
-    if ((is_nvme_method(job.method) && in.device.bus != Bus::Nvme) || (is_ata_method(job.method) && !ata_bus)) {
+    if ((is_nvme_method(job.method) && in.device.bus != Bus::Nvme) || (is_ata_sanitize(job.method) && !ata_bus)) {
         rec.error = to_string(job.method) + " does not apply to a " + to_string(in.device.bus) + " device";
+        return;
+    }
+    if (usb_sanitize_blocked(in.device, job.method) && !job.allow_usb_sanitize) {
+        rec.error = to_string(job.method) + " is off for drives behind a USB bridge; it needs an explicit override";
         return;
     }
 
@@ -178,7 +178,7 @@ void run_firmware(const EraseJob& job, CertificateInput& in) {
         return;
     }
 
-    if (auto r = is_ata_method(job.method) ? run_ata(t, job) : run_nvme(t, job); !r) {
+    if (auto r = is_ata_sanitize(job.method) ? run_ata(t, job) : run_nvme(t, job); !r) {
         rec.error = r.error();
         return;
     }
