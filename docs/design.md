@@ -45,6 +45,8 @@ The operator also has to type the drive's serial number. The live system boots w
 
 The firmware commands that haven't been tested on real hardware are labelled experimental. `auto` and the UI's default only ever pick tested methods. If a sanitize fails, PurgeMark sends the command that lets the drive leave its "sanitize failed" state (AUSE on NVMe, FAILURE MODE plus CLEAR on ATA), so a failure doesn't leave the drive refusing all access. Status polling gives up after five consecutive errors or 24 hours. Every erase runs inside a catch-all that turns an unexpected exception into a failed certificate instead of a crashed kiosk.
 
+ATA SANITIZE stays off for drives in a USB enclosure, even with `--experimental`. A lot of USB-to-SATA bridges drop the command, time out while the drive is still busy, or reset half way, and the drive can end up stuck in the sanitize-failed state with nothing on the other side able to clear it. The UI lists the method but greys it out. From the command line it needs both `--method ata-sanitize-...` and `--allow-usb-sanitize`, and `auto` never picks it.
+
 ## Talking to drives directly
 
 There's no dependency on nvme-cli, hdparm or sg3_utils. NVMe commands go through `NVME_IOCTL_ADMIN_CMD`. ATA commands go through `SG_IO` as ATA PASS-THROUGH(16), with both descriptor-format and fixed-format sense data parsed for the returned registers. The byte-level encoding and parsing are pure functions with unit tests (`tests/test_identify.cpp`), separate from the ioctl calls.

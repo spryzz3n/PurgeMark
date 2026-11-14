@@ -33,6 +33,8 @@ constexpr const char* kEraseUsage =
     "                         nvme-sanitize-crypto|block|overwrite,\n"
     "                         ata-sanitize-crypto|block|overwrite (untested; need --experimental)\n"
     "  --experimental         allow methods not yet validated on real hardware\n"
+    "  --allow-usb-sanitize   allow ATA SANITIZE on a drive behind a USB bridge; only\n"
+    "                         with an explicit --method, never picked by auto\n"
     "  --pattern random|zero  overwrite pattern (default random)\n"
     "  --samples N            verification samples (default 1000)\n"
     "  --operator NAME        recorded in the certificate\n"
@@ -87,7 +89,7 @@ bool confirm(const std::string& token, const Args& args) {
 
 int cmd_erase(const std::vector<std::string_view>& argv) {
     const auto parsed = parse_args(argv, {"method", "pattern", "samples", "operator", "org", "key", "out", "confirm"},
-                                   {"image", "experimental"});
+                                   {"image", "experimental", "allow-usb-sanitize"});
     if (!parsed || parsed->positional.size() != 1) {
         if (!parsed) std::cerr << "pmark: " << parsed.error() << "\n";
         std::cerr << kEraseUsage;
@@ -97,6 +99,7 @@ int cmd_erase(const std::vector<std::string_view>& argv) {
 
     pm::EraseJob job;
     job.allow_experimental = args.has("experimental");
+    job.allow_usb_sanitize = args.has("allow-usb-sanitize");
     const std::string method_arg = args.get("method", "auto");
     std::optional<pm::Method> requested;
     if (method_arg != "auto") {
@@ -172,7 +175,7 @@ int cmd_erase(const std::vector<std::string_view>& argv) {
             return 1;
         }
         // Probe for identity (sysfs lacks SATA serials, IDENTIFY has them) and capabilities.
-        const auto pr = pm::probe(*dev);
+        auto pr = pm::probe(*dev);
         job.device = pr.device;
         job.target_path = dev->path;
         token = job.device.serial.empty() ? job.device.name : job.device.serial;
@@ -181,6 +184,13 @@ int cmd_erase(const std::vector<std::string_view>& argv) {
             const auto s = pm::support(m);
             return s == pm::Support::Implemented || (s == pm::Support::Experimental && job.allow_experimental);
         };
+        // The USB override only reopens the method that was asked for by name.
+        if (job.allow_usb_sanitize && requested && pr.ata && pm::usb_sanitize_blocked(pr.device, *requested) &&
+            pm::ata_sanitize_supported(*requested, *pr.ata)) {
+            for (auto& c : pr.methods) {
+                if (c.method == *requested) c.available = true;
+            }
+        }
         const pm::Candidate* chosen = nullptr;
         for (const auto& c : pr.methods) {
             if (requested ? c.method == *requested : (c.available && runnable(c.method))) {
