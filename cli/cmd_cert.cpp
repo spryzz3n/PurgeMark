@@ -2,11 +2,14 @@
 
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <optional>
+#include <string>
 
 #include <nlohmann/json.hpp>
 
 #include "common.hpp"
+#include "pm/canonical_json.hpp"
 #include "pm/certificate.hpp"
 
 namespace pmcli {
@@ -54,11 +57,13 @@ int cmd_verify_cert(const std::vector<std::string_view>& argv) {
         std::cerr << "pmark: cannot read " << args.positional[0] << "\n";
         return 1;
     }
-    const auto cert = nlohmann::json::parse(in, nullptr, /*allow_exceptions=*/false);
-    if (cert.is_discarded()) {
-        std::cerr << "pmark: not valid JSON\n";
+    const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    const auto parsed_cert = pm::parse_strict(text);
+    if (!parsed_cert) {
+        std::cerr << "pmark: " << parsed_cert.error() << "\n";
         return 1;
     }
+    const auto& cert = parsed_cert.value();
 
     const auto check = pm::verify_certificate(cert, trusted);
     if (!check.signature_valid) {

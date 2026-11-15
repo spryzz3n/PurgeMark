@@ -55,6 +55,24 @@ const check = (cond, what) => {
   }
   check(threw, "floats are rejected");
 
+  // Strict parsing. The same cases are in tests/test_crypto.cpp.
+  const rejects = (text) => {
+    try {
+      PMVerify.parseStrict(text);
+      return false;
+    } catch {
+      return true;
+    }
+  };
+  check(PMVerify.parseStrict(fx("valid-certificate.json")).schema === cert.schema, "strict parse accepts a real certificate");
+  for (const bad of ['{"a":1.0}', '{"a":1e2}', '{"a":-0.5}', '[1E-3]', '{"a":1,"a":1}', '{"x":{"a":1,"b":2,"a":3}}',
+                     '{"a":1,"\\u0061":2}', "{nope}"]) {
+    check(rejects(bad), `strict parse rejects ${bad}`);
+  }
+  for (const good of ['{"a":1,"b":[{"a":2},{"a":3}]}', '{"s":"1.5e3 \\" {\\"a\\":1,\\"a\\":2}"}', "[-0, 10, true, null]", '{"":1}']) {
+    check(!rejects(good), `strict parse accepts ${good}`);
+  }
+
   try {
     parsePublicKeyPem("-----BEGIN PUBLIC KEY-----\nAAAA\n-----END PUBLIC KEY-----");
     check(false, "bad PEM is rejected");

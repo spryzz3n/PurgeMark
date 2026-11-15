@@ -45,7 +45,7 @@ Every erase, successful or not, produces a JSON file like this (trimmed):
 
 The signature is Ed25519 over the [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785) canonical form of the whole object, minus the `signature` field. Canonical form means no whitespace, object keys sorted by UTF-16 code units, and a fixed escaping rule for strings. Pretty-printing or reordering the file doesn't change the canonical bytes, so it doesn't break the signature.
 
-To keep the C++ and JavaScript implementations in exact agreement, certificates only use integers within ±2^53, never floats. The 64-bit sample seed is stored as a string for the same reason. The JavaScript verifier is tested against a certificate signed by the C++ tool that includes non-ASCII text and a character outside the Basic Multilingual Plane.
+To keep the C++ and JavaScript implementations in exact agreement, certificates only use integers within ±2^53, never floats. The 64-bit sample seed is stored as a string for the same reason. Both verifiers also refuse a file with a number written with a decimal point or exponent (JavaScript would read `1.0` as `1`, C++ as a float) or with a key repeated inside one object (parsers disagree on which copy wins), so a certificate can't read one way in one verifier and another way in the other. The JavaScript verifier is tested against a certificate signed by the C++ tool that includes non-ASCII text and a character outside the Basic Multilingual Plane.
 
 ## What a valid signature proves
 

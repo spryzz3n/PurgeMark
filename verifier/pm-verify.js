@@ -30,6 +30,60 @@
     throw new Error("unsupported JSON value");
   }
 
+  // JSON.parse plus two rules, matching pm::parse_strict in the C++ tool:
+  // numbers must be whole (no fraction or exponent, so 1.0 doesn't quietly
+  // become 1), and no object may repeat a key (JSON.parse keeps the last one,
+  // other parsers keep the first, so the same file could read differently).
+  function parseStrict(text) {
+    const value = JSON.parse(text);  // throws on anything that isn't JSON at all
+    // The text is valid JSON from here on, so the walk below can be simple.
+    let i = 0;
+    const skipWs = () => { while (" \t\n\r".includes(text[i])) i++; };
+    const readString = () => {
+      const start = i++;
+      while (text[i] !== '"') i += text[i] === "\\" ? 2 : 1;
+      i++;
+      return JSON.parse(text.slice(start, i));
+    };
+    const number = /-?\d+(\.\d+)?([eE][+-]?\d+)?/y;
+    const literal = /true|false|null/y;
+    const walk = () => {
+      skipWs();
+      const c = text[i];
+      if (c === "{" || c === "[") {
+        const seen = c === "{" ? new Set() : null;
+        const close = c === "{" ? "}" : "]";
+        i++;
+        skipWs();
+        if (text[i] === close) { i++; return; }
+        for (;;) {
+          if (seen) {
+            skipWs();
+            const key = readString();
+            if (seen.has(key)) throw new Error(`duplicate key "${key}"`);
+            seen.add(key);
+            skipWs();
+            i++;  // ':'
+          }
+          walk();
+          skipWs();
+          if (text[i++] === close) return;  // otherwise it was ','
+        }
+      }
+      if (c === '"') { readString(); return; }
+      for (const re of [number, literal]) {
+        re.lastIndex = i;
+        const m = re.exec(text);
+        if (!m) continue;
+        if (re === number && (m[1] || m[2])) throw new Error("numbers must be whole, with no decimal point or exponent");
+        i = re.lastIndex;
+        return;
+      }
+    };
+    walk();
+    return value;
+  }
+
   function base64ToBytes(b64) {
     if (typeof b64 !== "string" || b64.length % 4 !== 0) throw new Error("invalid base64");
     const bin = atob(b64);
@@ -84,5 +138,5 @@
     return out;
   }
 
-  global.PMVerify = { SCHEMA, canonicalize, keyId, parsePublicKeyPem, verifyCertificate };
+  global.PMVerify = { SCHEMA, canonicalize, parseStrict, keyId, parsePublicKeyPem, verifyCertificate };
 })(globalThis);

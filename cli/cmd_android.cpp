@@ -12,6 +12,7 @@
 
 #include "common.hpp"
 #include "pm/android_record.hpp"
+#include "pm/canonical_json.hpp"
 #include "pm/crypto.hpp"
 
 namespace pmcli {
@@ -74,11 +75,12 @@ int verify(const std::vector<std::string_view>& argv) {
         std::cerr << "pmark: cannot read " << parsed->positional[0] << "\n";
         return 1;
     }
-    const auto record = nlohmann::json::parse(*text, nullptr, false);
-    if (record.is_discarded()) {
-        std::cerr << "pmark: not valid JSON\n";
+    const auto parsed_record = pm::parse_strict(*text);
+    if (!parsed_record) {
+        std::cerr << "pmark: " << parsed_record.error() << "\n";
         return 1;
     }
+    const auto& record = parsed_record.value();
 
     std::optional<std::vector<std::uint8_t>> challenge;
     if (const std::string path = parsed->get("challenge"); !path.empty()) {

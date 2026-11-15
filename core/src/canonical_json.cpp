@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <optional>
+#include <set>
 #include <utility>
 #include <vector>
 
@@ -131,6 +132,34 @@ Result<bool> write_value(const nlohmann::json& v, std::string& out) {
 }
 
 }  // namespace
+
+Result<nlohmann::json> parse_strict(std::string_view text) {
+    using nlohmann::json;
+    std::vector<std::set<std::string>> keys;  // one set per open object
+    std::string problem;
+    const json::parser_callback_t check = [&](int, json::parse_event_t event, json& parsed) {
+        if (!problem.empty()) return true;
+        switch (event) {
+            case json::parse_event_t::object_start: keys.emplace_back(); break;
+            case json::parse_event_t::object_end:
+                if (!keys.empty()) keys.pop_back();
+                break;
+            case json::parse_event_t::key:
+                if (!keys.empty() && !keys.back().insert(parsed.get<std::string>()).second)
+                    problem = "duplicate key \"" + parsed.get<std::string>() + "\"";
+                break;
+            case json::parse_event_t::value:
+                if (parsed.is_number_float()) problem = "numbers must be whole, with no decimal point or exponent";
+                break;
+            default: break;
+        }
+        return true;
+    };
+    auto value = json::parse(text.begin(), text.end(), check, /*allow_exceptions=*/false);
+    if (value.is_discarded()) return Result<json>::fail("not valid JSON");
+    if (!problem.empty()) return Result<json>::fail(problem);
+    return Result<json>::ok(std::move(value));
+}
 
 Result<std::string> canonicalize(const nlohmann::json& value) {
     std::string out;
