@@ -37,6 +37,18 @@ static void test_canonical() {
     CHECK(!pm::canonicalize(json(std::string("\xC3\x28"))));      // invalid UTF-8
     CHECK(!pm::canonicalize(json(std::string("\xED\xA0\x80"))));  // encoded surrogate
     CHECK(!pm::canonicalize(json(std::string("\xC0\xAF"))));      // overlong '/'
+
+    // Strict parsing. The same cases are in verifier/test.js.
+    for (const char* bad : {R"({"a":1.0})", R"({"a":1e2})", R"({"a":-0.5})", "[1E-3]", R"({"a":1,"a":1})",
+                            R"({"x":{"a":1,"b":2,"a":3}})", R"({"a":1,"a":2})", "{nope}"}) {
+        CHECK(!pm::parse_strict(bad));
+    }
+    for (const char* good : {R"({"a":1,"b":[{"a":2},{"a":3}]})", R"({"s":"1.5e3 \" {\"a\":1,\"a\":2}"})",
+                             "[-0, 10, true, null]", R"({"":1})"}) {
+        CHECK(static_cast<bool>(pm::parse_strict(good)));
+    }
+    const auto dup = pm::parse_strict(R"({"a":1,"a":2})");
+    CHECK(!dup && dup.error().find("duplicate key") != std::string::npos);
 }
 
 static void test_base64() {

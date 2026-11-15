@@ -132,11 +132,13 @@ async function render() {
 
 async function load(file) {
   try {
-    current = JSON.parse(await file.text());
-  } catch {
+    current = PMVerify.parseStrict(await file.text());
+  } catch (e) {
     current = null;
     $("result").hidden = false;
-    $("result").innerHTML = verdict("bad", "That isn't a JSON file");
+    $("result").innerHTML = e instanceof SyntaxError
+      ? verdict("bad", "That isn't a JSON file")
+      : verdict("bad", "Not a valid certificate", e.message);
     return;
   }
   render();
