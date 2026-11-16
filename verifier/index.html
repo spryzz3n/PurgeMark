@@ -131,7 +131,7 @@
       ${row("Method", `${s.method_name || s.method} (NIST ${s.nist_level})`)}
       ${row("Pattern", s.pattern)}
       ${row("Erased", s.started_at && `${s.started_at} → ${s.finished_at}`)}
-      ${row("Verification", `${v.passed ? "passed" : "FAILED"}: ${v.samples} samples, ${size(v.bytes_checked)} read back, ${v.mismatches} mismatches`)}
+      ${row("Verification", `${v.passed ? "passed" : "FAILED"}: ${v.scope === "full" ? "whole disk" : `${v.samples} samples`}, ${size(v.bytes_checked)} read back${v.coverage ? ` (${v.coverage} of the disk)` : ""}, ${v.mismatches} mismatches`)}
       ${row("Operator", [o.name, o.organization].filter(Boolean).join(", "))}
       ${row("Issued", c.issued_at)}
       ${row("Certificate ID", c.certificate_id)}

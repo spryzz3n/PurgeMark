@@ -17,6 +17,7 @@ struct EraseJob {
     Pattern pattern = Pattern::Random;  // overwrite only
     bool allow_experimental = false;    // run methods not yet validated on real hardware
     bool allow_usb_sanitize = false;    // run ATA SANITIZE through a USB bridge anyway
+    bool full_verify = false;           // overwrite only: read back every byte, not a sample
     std::uint32_t verify_samples = 1000;
     std::uint32_t sample_bytes = 64 << 10;
     // Progress callback; returning false cancels an overwrite. Firmware commands

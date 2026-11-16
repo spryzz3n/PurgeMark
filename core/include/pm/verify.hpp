@@ -35,6 +35,8 @@ struct VerifyReport {
     std::string error;          // I/O failure during verification
     std::uint64_t seed = 0;
     std::uint32_t sample_bytes = 0;
+    bool full = false;                  // every byte was read back, not a sample
+    std::uint64_t target_bytes = 0;     // size of what was checked, for coverage
 
     bool passed() const { return error.empty() && mismatches == 0 && !inconclusive && samples > 0; }
 };
@@ -44,6 +46,16 @@ using ExpectedContent = std::function<void(std::uint64_t offset, std::span<std::
 
 // After an overwrite: every sampled byte must equal the written pattern.
 VerifyReport verify_pattern(const Target& target, const SamplePlan& plan, const ExpectedContent& expected);
+
+// The same check over the whole target, read in large chunks. Takes as long
+// as the overwrite did. Progress returning false stops it (recorded as an error).
+using VerifyProgress = std::function<bool(std::uint64_t done, std::uint64_t total)>;
+VerifyReport verify_pattern_full(const Target& target, const ExpectedContent& expected,
+                                 const VerifyProgress& progress = {});
+
+// Share of the target that was read back, as a percent string for the
+// certificate ("100%", "0.0061%"). Rounds down, so a sample never shows as 100%.
+std::string coverage_percent(std::uint64_t bytes_checked, std::uint64_t target_bytes);
 
 // For firmware methods, whose post-erase content is vendor-defined (zeros, ones,
 // or ciphertext under a discarded key). Before the erase, random canaries are

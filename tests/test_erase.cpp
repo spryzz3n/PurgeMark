@@ -1,5 +1,6 @@
 // Overwrite, verification, and the full erase-to-certificate path on image files.
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -51,6 +52,17 @@ static void test_sample_plan() {
     CHECK(pm::plan_samples(100, 512, 4096, 10, 1).offsets.empty());
 }
 
+static void test_coverage_text() {
+    CHECK(pm::coverage_percent(0, 0) == "0%");
+    CHECK(pm::coverage_percent(10, 10) == "100%");
+    CHECK(pm::coverage_percent(1, 2) == "50%");
+    CHECK(pm::coverage_percent(999'999, 1'000'000) == "99.9999%");      // never rounds up to 100%
+    CHECK(pm::coverage_percent(64ull << 20, 1'000'204'886'016ull) == "0.0067%");  // 64 MiB read back on 1 TB
+    CHECK(pm::coverage_percent(1, 1ull << 40) == "<0.0001%");
+    CHECK(pm::coverage_percent(15ull << 40, 30ull << 40) == "50%");        // large enough to need scaling
+    CHECK(pm::coverage_percent((30ull << 40) - 1, 30ull << 40) == "99.9999%");
+}
+
 static void test_overwrite_and_verify(const fs::path& dir) {
     for (const auto pattern : {pm::Pattern::Random, pm::Pattern::Zero}) {
         const auto img = make_image(dir, "ow.img");
@@ -77,6 +89,29 @@ static void test_overwrite_and_verify(const fs::path& dir) {
 
         const auto vc = pm::verify_changed(*t, plan, before.value());
         CHECK(vc.passed() && vc.skipped == 0);
+
+        std::uint64_t progress_seen = 0;
+        const auto vf = pm::verify_pattern_full(*t, ow->expected, [&](std::uint64_t done, std::uint64_t) {
+            progress_seen = done;
+            return true;
+        });
+        CHECK(vf.passed() && vf.full && vf.bytes_checked == kImageSize && progress_seen == kImageSize);
+        CHECK(pm::coverage_percent(vf.bytes_checked, vf.target_bytes) == "100%");
+        CHECK(pm::coverage_percent(vp.bytes_checked, vp.target_bytes) != "100%");
+
+        // Old data left where no sample looks: only the full read-back finds it.
+        std::uint64_t hidden = 0;
+        while (std::find(plan.offsets.begin(), plan.offsets.end(), hidden) != plan.offsets.end()) hidden += plan.sample_bytes;
+        CHECK(hidden + plan.sample_bytes < plan.offsets.back());
+        const std::vector<std::uint8_t> leftover(512, 'L');
+        CHECK(static_cast<bool>(t->write_at(hidden + 1024, leftover)));
+        CHECK(pm::verify_pattern(*t, plan, ow->expected).passed());
+        const auto missed = pm::verify_pattern_full(*t, ow->expected);
+        CHECK(!missed.passed() && missed.mismatches == 1 && missed.first_mismatch == hidden + 1024);
+        CHECK(!pm::verify_pattern_full(*t, ow->expected, [](std::uint64_t, std::uint64_t) { return false; }).passed());
+        std::vector<std::uint8_t> restore(512);
+        ow->expected(hidden + 1024, restore);
+        CHECK(static_cast<bool>(t->write_at(hidden + 1024, restore)));
 
         // Plant old data back in a sampled region: both checks must catch it.
         const std::uint64_t victim = plan.offsets[plan.offsets.size() / 2];
@@ -170,6 +205,19 @@ static void test_run_erase_to_certificate(const fs::path& dir) {
     const auto key = pm::SigningKey::generate();
     const auto cert = pm::sign_certificate(pm::make_certificate_body(in), key, pm::Attestation::OperatorKey);
     CHECK(cert && cert->at("result") == "sanitized");
+    CHECK(cert && cert->at("verification").at("scope") == "sampled" && cert->at("verification").contains("sample_seed"));
+    CHECK(cert && cert->at("verification").at("coverage") != "100%");
+
+    // Full read-back: recorded as such, with no sample seed.
+    job.full_verify = true;
+    const auto full = pm::make_certificate_body(pm::run_erase(job));
+    CHECK(full["result"] == "sanitized" && full["verification"]["scope"] == "full");
+    CHECK(full["verification"]["coverage"] == "100%" && !full["verification"].contains("sample_seed"));
+    job.method = pm::Method::NvmeFormatCrypto;  // firmware methods can't do a full read-back
+    const auto fw = pm::run_erase(job);
+    CHECK(!fw.sanitization.completed && fw.sanitization.error.find("full verification") != std::string::npos);
+    job.method = pm::Method::Overwrite;
+    job.full_verify = false;
     CHECK(pm::verify_certificate(cert.value(), key.public_raw()).trusted);
 
     // Experimental method without opt-in, unimplemented method, and a firmware
@@ -214,6 +262,7 @@ int main() {
     fs::create_directories(dir);
 
     test_sample_plan();
+    test_coverage_text();
     test_overwrite_and_verify(dir);
     test_unchanged_is_detected(dir);
     test_canaries(dir);

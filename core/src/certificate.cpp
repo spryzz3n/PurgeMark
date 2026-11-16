@@ -48,10 +48,13 @@ json make_certificate_body(const CertificateInput& in) {
         {"sample_bytes", v.sample_bytes},
         {"bytes_checked", v.bytes_checked},
         {"mismatches", v.mismatches},
-        // The seed is a 64-bit value; as a decimal string it survives JSON
-        // parsers that only handle 53-bit integers.
-        {"sample_seed", std::to_string(v.seed)},
+        {"scope", v.full ? "full" : "sampled"},
+        // A string, because certificates carry no floats.
+        {"coverage", coverage_percent(v.bytes_checked, v.target_bytes)},
     };
+    // The seed is a 64-bit value; as a decimal string it survives JSON
+    // parsers that only handle 53-bit integers. A full read-back has no seed.
+    if (!v.full) verification["sample_seed"] = std::to_string(v.seed);
     if (v.skipped) verification["skipped_uniform_samples"] = v.skipped;
     if (v.inconclusive) verification["inconclusive"] = true;
     if (v.first_mismatch) verification["first_mismatch_offset"] = *v.first_mismatch;

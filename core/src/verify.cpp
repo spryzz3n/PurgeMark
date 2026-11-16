@@ -1,6 +1,7 @@
 #include "pm/verify.hpp"
 
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
 #include <random>
 
@@ -46,6 +47,7 @@ VerifyReport verify_pattern(const Target& target, const SamplePlan& plan, const 
     r.mode = "pattern";
     r.seed = plan.seed;
     r.sample_bytes = plan.sample_bytes;
+    r.target_bytes = target.size();
     target.drop_cache();
 
     AlignedBuffer actual(plan.sample_bytes);
@@ -68,6 +70,68 @@ VerifyReport verify_pattern(const Target& target, const SamplePlan& plan, const 
     return r;
 }
 
+VerifyReport verify_pattern_full(const Target& target, const ExpectedContent& expected,
+                                 const VerifyProgress& progress) {
+    constexpr std::uint32_t kChunk = 4u << 20;
+    VerifyReport r;
+    r.mode = "pattern";
+    r.full = true;
+    r.sample_bytes = kChunk;
+    r.target_bytes = target.size();
+    target.drop_cache();
+
+    const std::uint32_t block = target.logical_block_size() ? target.logical_block_size() : 512;
+    AlignedBuffer actual(kChunk);
+    std::vector<std::uint8_t> want(kChunk);
+    for (std::uint64_t off = 0; off < target.size();) {
+        auto len = static_cast<std::uint32_t>(std::min<std::uint64_t>(kChunk, target.size() - off));
+        if (target.direct_io()) len -= len % block;  // O_DIRECT can't read a partial block
+        if (len == 0) break;                         // the unread tail lowers the coverage figure
+        auto got = actual.span().first(len);
+        if (auto rd = target.read_at(off, got); !rd) {
+            r.error = rd.error();
+            return r;
+        }
+        expected(off, std::span(want).first(len));
+        ++r.samples;
+        r.bytes_checked += len;
+        if (std::memcmp(got.data(), want.data(), len) != 0) {
+            ++r.mismatches;
+            if (!r.first_mismatch) {
+                std::uint32_t pos = 0;
+                while (got[pos] == want[pos]) ++pos;
+                r.first_mismatch = off + pos / block * block;
+            }
+        }
+        off += len;
+        if (progress && !progress(r.bytes_checked, target.size())) {
+            r.error = "verification cancelled";
+            return r;
+        }
+    }
+    return r;
+}
+
+std::string coverage_percent(std::uint64_t bytes_checked, std::uint64_t target_bytes) {
+    if (target_bytes == 0) return "0%";
+    if (bytes_checked >= target_bytes) return "100%";
+    // Percent with four decimals, rounded down: 10^6 units per whole.
+    // Above ~18 TB the product would overflow; halving both keeps the ratio.
+    while (bytes_checked > UINT64_MAX / 1'000'000) {
+        bytes_checked >>= 1;
+        target_bytes >>= 1;
+    }
+    const std::uint64_t units = bytes_checked * 1'000'000 / target_bytes;
+    if (units == 0) return "<0.0001%";
+    char buf[32];
+    std::snprintf(buf, sizeof buf, "%llu.%04llu", static_cast<unsigned long long>(units / 10'000),
+                  static_cast<unsigned long long>(units % 10'000));
+    std::string s = buf;
+    while (s.back() == '0') s.pop_back();
+    if (s.back() == '.') s.pop_back();
+    return s + "%";
+}
+
 Result<ExpectedContent> plant_canaries(const Target& target, const SamplePlan& plan) {
     using R = Result<ExpectedContent>;
     ExpectedContent canary = [ks = Keystream::random()](std::uint64_t off, std::span<std::uint8_t> out) {
@@ -88,6 +152,7 @@ VerifyReport verify_canaries_gone(const Target& target, const SamplePlan& plan, 
     r.mode = "canary";
     r.seed = plan.seed;
     r.sample_bytes = plan.sample_bytes;
+    r.target_bytes = target.size();
     target.drop_cache();
 
     AlignedBuffer actual(plan.sample_bytes);
@@ -133,6 +198,7 @@ VerifyReport verify_changed(const Target& target, const SamplePlan& plan, const 
     r.mode = "changed";
     r.seed = plan.seed;
     r.sample_bytes = plan.sample_bytes;
+    r.target_bytes = target.size();
     if (before.size() != plan.offsets.size()) {
         r.error = "fingerprint count does not match sample plan";
         return r;
