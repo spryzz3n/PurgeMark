@@ -27,6 +27,8 @@ Every erase, successful or not, produces a JSON file like this (trimmed):
     "passed": true,
     "samples": 997,
     "mismatches": 0,
+    "scope": "sampled",
+    "coverage": "0.013%",
     "sample_seed": "15962972881059263092"
   },
   "signer": {
@@ -40,6 +42,8 @@ Every erase, successful or not, produces a JSON file like this (trimmed):
 ```
 
 `result` is `sanitized` only when the erase completed and the verification passed. Anything else is recorded as `failed`, with the reason in `sanitization.error` or `verification.error`.
+
+`verification.coverage` says how much of the disk was actually read back, rounded down so a sample never shows as `100%`. By default that's about 1000 random 64 KiB regions plus the first and last, which on a 500 GB drive is around 0.013%. Sampling catches an erase that failed or stopped part way, but not a small leftover patch between the samples. For an overwrite, `pmark erase --full-verify` reads back every byte instead (it takes about as long as the overwrite), and the certificate then says `"scope": "full"` with `"coverage": "100%"` and no `sample_seed`. Firmware erases leave vendor-defined content, so there's nothing to compare a full read against; they stay sampled, checked with canaries. Certificates made before 0.4 don't have `scope` or `coverage`.
 
 ## What gets signed
 

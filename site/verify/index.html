@@ -122,7 +122,7 @@ async function render() {
     ${row("Method", `${s.method_name || s.method} (NIST ${s.nist_level})`)}
     ${row("Pattern", s.pattern)}
     ${row("Erased", s.started_at && `${s.started_at} to ${s.finished_at}`)}
-    ${row("Check", `${v.passed ? "passed" : "FAILED"}: ${v.samples} regions read back (${v.mode}), ${v.mismatches} problems`)}
+    ${row("Check", `${v.passed ? "passed" : "FAILED"}: ${v.scope === "full" ? "the whole disk" : `${v.samples} regions`} read back (${v.mode}${v.coverage ? `, ${v.coverage} of the disk` : ""}), ${v.mismatches} problems`)}
     ${row("Operator", [o.name, o.organization].filter(Boolean).join(", "))}
     ${row("Issued", c.issued_at)}
     ${row("Certificate", c.certificate_id)}

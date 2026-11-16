@@ -132,6 +132,12 @@ void run_firmware(const EraseJob& job, CertificateInput& in) {
         rec.error = to_string(job.method) + " is not implemented yet";
         return;
     }
+    if (job.full_verify) {
+        // Firmware erases leave vendor-defined content, so there's nothing to
+        // compare a full read against; they're checked with canaries instead.
+        rec.error = "full verification only applies to overwrite";
+        return;
+    }
     if (support(job.method) == Support::Experimental && !job.allow_experimental) {
         rec.error = to_string(job.method) + " is experimental (not yet validated on real hardware); "
                     "it needs an explicit opt-in";
@@ -212,7 +218,8 @@ void run_overwrite(const EraseJob& job, CertificateInput& in) {
     rec.bytes_written = ow->bytes_written;
     rec.completed = true;
     rec.finished_at = utc_now_iso8601();
-    in.verification = verify_pattern(t, make_plan(t, job), ow->expected);
+    in.verification = job.full_verify ? verify_pattern_full(t, ow->expected, job.progress)
+                                      : verify_pattern(t, make_plan(t, job), ow->expected);
 }
 
 }  // namespace

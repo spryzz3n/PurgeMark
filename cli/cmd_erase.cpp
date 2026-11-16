@@ -37,6 +37,8 @@ constexpr const char* kEraseUsage =
     "                         with an explicit --method, never picked by auto\n"
     "  --pattern random|zero  overwrite pattern (default random)\n"
     "  --samples N            verification samples (default 1000)\n"
+    "  --full-verify          overwrite only: read back the whole disk instead of\n"
+    "                         samples; takes about as long as the overwrite\n"
     "  --operator NAME        recorded in the certificate\n"
     "  --org NAME             recorded in the certificate\n"
     "  --key PRIVATE.pem      sign with this key; without it a one-off key is used\n"
@@ -89,7 +91,7 @@ bool confirm(const std::string& token, const Args& args) {
 
 int cmd_erase(const std::vector<std::string_view>& argv) {
     const auto parsed = parse_args(argv, {"method", "pattern", "samples", "operator", "org", "key", "out", "confirm"},
-                                   {"image", "experimental", "allow-usb-sanitize"});
+                                   {"image", "experimental", "allow-usb-sanitize", "full-verify"});
     if (!parsed || parsed->positional.size() != 1) {
         if (!parsed) std::cerr << "pmark: " << parsed.error() << "\n";
         std::cerr << kEraseUsage;
@@ -100,6 +102,7 @@ int cmd_erase(const std::vector<std::string_view>& argv) {
     pm::EraseJob job;
     job.allow_experimental = args.has("experimental");
     job.allow_usb_sanitize = args.has("allow-usb-sanitize");
+    job.full_verify = args.has("full-verify");
     const std::string method_arg = args.get("method", "auto");
     std::optional<pm::Method> requested;
     if (method_arg != "auto") {
@@ -214,12 +217,19 @@ int cmd_erase(const std::vector<std::string_view>& argv) {
         job.method = chosen->method;
     }
 
+    if (job.full_verify && job.method != pm::Method::Overwrite) {
+        std::cerr << "pmark: --full-verify only applies to overwrite; " << pm::to_string(job.method)
+                  << " is checked with canaries\n";
+        return 2;
+    }
+
     std::cerr << "target : " << job.target_path << "  " << or_dash(job.device.model) << "  "
               << human_size(job.device.size_bytes) << "\n"
               << "serial : " << or_dash(job.device.serial) << "\n"
               << "method : " << pm::to_string(job.method) << " (NIST "
               << pm::to_string(pm::nominal_level(job.method, !job.device.rotational)) << ")"
-              << (job.method == pm::Method::Overwrite ? ", " + pm::to_string(job.pattern) : "") << "\n";
+              << (job.method == pm::Method::Overwrite ? ", " + pm::to_string(job.pattern) : "")
+              << (job.full_verify ? ", full read-back" : "") << "\n";
     if (!confirm(token, args)) {
         std::cerr << "pmark: confirmation did not match; nothing was written\n";
         return 1;
@@ -272,7 +282,8 @@ int cmd_erase(const std::vector<std::string_view>& argv) {
     else std::cerr << "erase  : drive reported " << pm::to_string(job.method) << " complete\n";
     if (input.sanitization.completed) {
         std::cerr << "verify : " << (v.passed() ? "PASSED" : "FAILED") << " (" << v.mode << "), " << v.samples
-                  << " samples, " << human_size(v.bytes_checked) << " read back, " << v.mismatches << " mismatches"
+                  << (v.full ? " chunks, " : " samples, ") << human_size(v.bytes_checked) << " read back ("
+                  << pm::coverage_percent(v.bytes_checked, v.target_bytes) << "), " << v.mismatches << " mismatches"
                   << (v.error.empty() ? "" : ", " + v.error) << "\n";
     }
     std::cerr << "cert   : " << cert_path.value() << " ("
