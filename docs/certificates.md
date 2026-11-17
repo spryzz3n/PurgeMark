@@ -60,6 +60,23 @@ It proves the file hasn't changed since it was signed. Who signed it depends on 
 
 The ISO deliberately ships without a signing key. Any key baked into a public image could be extracted, and then anyone could forge certificates with it.
 
+## What it doesn't prove
+
+A signature ties the contents to a key. It says nothing about whether those contents were true when they were written, so most fields are best read as the operator's claim.
+
+The times (`issued_at`, `started_at`, `finished_at`) come from the clock of the machine that ran the erase. The live ISO has no network and doesn't sync time, so that's whatever the motherboard clock says, which can be wrong by years on an old machine with a flat battery or set to anything on purpose. Nothing outside the operator's machine confirms when a certificate was made, so it can be backdated.
+
+The drive's model, serial and firmware are what the drive reported, passed through any USB bridge on the way. PurgeMark reads them directly rather than trusting the operator to type them, but a drive or bridge that reports someone else's serial will end up in the certificate.
+
+`certificate_id` is a random UUID. It isn't registered anywhere, so nothing stops someone from erasing the same drive twice and keeping only the certificate they like, or quietly deleting the record of a failed run. Whoever holds an operator key can also sign a certificate by hand without running PurgeMark at all. Trusting an operator-key certificate means trusting that operator to look after their key and to be honest with it.
+
+None of this is unusual for a tool that runs offline on the operator's own hardware, but it does decide what the certificate is good for. It's a tamper-evident record made by someone you already trust, not independent proof.
+
+Two things would close most of the gap, and neither is built yet:
+
+1. An [RFC 3161](https://www.rfc-editor.org/rfc/rfc3161) timestamp. After signing, send the signature's hash to a timestamping authority and store its signed reply in the certificate. That proves the certificate existed by a certain time, so it can't be backdated later. It needs network access at the end of the erase, or a step afterwards on another machine.
+2. A transparency log: an append-only public log that every certificate is submitted to, in the style of Certificate Transparency or Sigstore's Rekor. Anyone could then list every certificate issued for a drive serial or by an operator key, so a failed run can't be hidden and a drive can't be quietly erased again for a nicer certificate.
+
 ## Checking one
 
 ```sh
