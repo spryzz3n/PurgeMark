@@ -74,7 +74,55 @@ Result<AtaIdentify> parse_ata_identify(std::span<const std::uint8_t, 512> raw) {
     id.sanitize_crypto = id.sanitize_supported && bit(san, 13);
     id.sanitize_overwrite = id.sanitize_supported && bit(san, 14);
     id.sanitize_block = id.sanitize_supported && bit(san, 15);
+
+    id.lba48 = bit(word(raw, 83), 10);
+    id.hpa_supported = bit(word(raw, 82), 10);
+    id.dco_supported = bit(word(raw, 83), 11);
+    const std::uint16_t w119 = word(raw, 119);
+    id.amac_supported = (w119 & 0xC000) == 0x4000 && bit(w119, 8);  // bits 15:14 = 01 mark the word valid
+    if (id.lba48) {
+        for (std::size_t i = 0; i < 4; ++i) id.user_sectors |= static_cast<std::uint64_t>(word(raw, 100 + i)) << (16 * i);
+    } else {
+        id.user_sectors = word(raw, 60) | static_cast<std::uint64_t>(word(raw, 61)) << 16;
+    }
     return Result<AtaIdentify>::ok(id);
+}
+
+std::optional<HiddenArea> hidden_area(const AtaIdentify& id) {
+    if (id.user_sectors == 0) return std::nullopt;
+    const std::uint64_t user_max = id.user_sectors - 1;
+    HiddenArea h;
+    std::uint64_t top = user_max;
+    if (id.native_max) {
+        if (id.native_max->exact) {
+            if (id.native_max->max_lba > user_max) {
+                h.hpa = true;
+                top = id.native_max->max_lba;
+            }
+        } else if ((id.native_max->max_lba ^ user_max) & 0xFFFFFF) {
+            // Only the low 24 bits are known, and they already differ.
+            h.hpa = true;
+            h.size_known = false;
+        }
+    }
+    if (id.dco_max_lba && *id.dco_max_lba > std::max(top, user_max)) {
+        h.dco = true;
+        top = *id.dco_max_lba;
+        h.size_known = true;  // the factory max is exact, and it bounds the native one
+    }
+    if (!h.hpa && !h.dco) return std::nullopt;
+    h.sectors = top - user_max;
+    return h;
+}
+
+std::string describe(const HiddenArea& h) {
+    const std::string what = h.hpa && h.dco ? "HPA and DCO" : h.hpa ? "HPA" : "DCO";
+    std::string size = "an unknown number of sectors";
+    if (h.size_known) {
+        size = std::to_string(h.sectors) + " sectors";
+        if (const auto mib = h.sectors / 2048; mib > 0) size += " (" + std::to_string(mib) + " MiB at 512 bytes each)";
+    }
+    return "drive hides " + size + " past its visible end (" + what + "); no erase can be trusted to reach them";
 }
 
 std::array<std::uint8_t, 16> ata_pt16_cdb(const AtaTaskfile& tf, AtaProtocol protocol, bool check_condition) {
@@ -133,6 +181,7 @@ std::optional<AtaRegisters> parse_ata_sense(std::span<const std::uint8_t> sense)
         r.device = sense[5];
         r.count = sense[6];
         r.count_upper_nonzero = (sense[8] >> 6) & 1U;
+        r.lba_upper_nonzero = (sense[8] >> 5) & 1U;
         r.lba = static_cast<std::uint64_t>(sense[9]) | static_cast<std::uint64_t>(sense[10]) << 8 |
                 static_cast<std::uint64_t>(sense[11]) << 16;
         r.upper_bytes_known = false;
@@ -202,6 +251,74 @@ Result<AtaIdentifyData> ata_identify_raw(const std::string& dev_path) {
         return R::fail("IDENTIFY returned no data");
     }
     return R::ok(buf);
+}
+
+// --- Native and factory capacity -----------------------------------------------
+
+AtaTaskfile ata_native_max_taskfile(const AtaIdentify& id) {
+    AtaTaskfile tf;
+    tf.device = 0x40;
+    if (id.amac_supported) {
+        tf.command = 0x78;  // ACCESSIBLE MAX ADDRESS CONFIGURATION
+        tf.features = 0x0000;  // GET NATIVE MAX ADDRESS EXT
+        tf.extended = true;
+    } else if (id.lba48) {
+        tf.command = 0x27;  // READ NATIVE MAX ADDRESS EXT
+        tf.extended = true;
+    } else {
+        tf.command = 0xF8;  // READ NATIVE MAX ADDRESS (28-bit)
+    }
+    return tf;
+}
+
+AtaIdentify::NativeMax parse_native_max(const AtaRegisters& regs, bool extended) {
+    AtaIdentify::NativeMax n;
+    if (!extended) {
+        // 28-bit: LBA 27:24 sits in the low nibble of DEVICE, which fixed sense keeps.
+        n.max_lba = (regs.lba & 0xFFFFFF) | static_cast<std::uint64_t>(regs.device & 0x0F) << 24;
+        return n;
+    }
+    n.max_lba = regs.lba & 0xFFFF'FFFF'FFFF;
+    // Fixed-format sense drops LBA 47:24 but flags whether any of it was set.
+    n.exact = regs.upper_bytes_known || !regs.lba_upper_nonzero;
+    return n;
+}
+
+Result<AtaIdentify::NativeMax> ata_read_native_max(int fd, const AtaIdentify& id) {
+    using R = Result<AtaIdentify::NativeMax>;
+    if (!id.amac_supported && !id.hpa_supported) return R::fail("drive has no HPA or Accessible Max Address support");
+    const auto tf = ata_native_max_taskfile(id);
+    const auto r = ata_passthrough(fd, tf, AtaProtocol::NonData, {}, 10'000);
+    if (!r) return R::fail(r.error());
+    if (r->has_error()) return R::fail("native max address query aborted by the drive");
+    if (r->status == 0 && r->lba == 0) return R::fail("no registers returned for the native max address");
+    return R::ok(parse_native_max(r.value(), tf.extended));
+}
+
+Result<std::uint64_t> parse_dco_identify(std::span<const std::uint8_t, 512> raw) {
+    using R = Result<std::uint64_t>;
+    if ((word(raw, 255) & 0xFF) == 0xA5) {
+        const unsigned sum = std::accumulate(raw.begin(), raw.end(), 0U);
+        if ((sum & 0xFF) != 0) return R::fail("DCO IDENTIFY checksum mismatch");
+    }
+    std::uint64_t max_lba = 0;
+    for (std::size_t i = 0; i < 4; ++i) max_lba |= static_cast<std::uint64_t>(word(raw, 3 + i)) << (16 * i);
+    if (max_lba == 0) return R::fail("DCO IDENTIFY returned no maximum LBA");
+    return R::ok(max_lba);
+}
+
+Result<std::uint64_t> ata_dco_max_lba(int fd) {
+    using R = Result<std::uint64_t>;
+    AtaIdentifyData buf{};
+    AtaTaskfile tf;
+    tf.command = 0xB1;    // DEVICE CONFIGURATION OVERLAY
+    tf.features = 0xC2;   // IDENTIFY
+    tf.count = 1;
+    tf.device = 0x40;
+    const auto r = ata_passthrough(fd, tf, AtaProtocol::PioDataIn, buf, 10'000);
+    if (!r) return R::fail(r.error());
+    if (r->has_error()) return R::fail("DCO IDENTIFY aborted by the drive");
+    return parse_dco_identify(buf);
 }
 
 // --- SANITIZE ------------------------------------------------------------------

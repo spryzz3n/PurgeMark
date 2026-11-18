@@ -43,6 +43,14 @@ void print_probe(const pm::ProbeResult& r) {
                     a.security_enabled ? ", PASSWORD SET" : "", a.security_frozen ? ", FROZEN" : "",
                     a.security_locked ? ", LOCKED" : "", yes_no(a.sanitize_crypto),
                     yes_no(a.sanitize_block), yes_no(a.sanitize_overwrite));
+        const auto lba = [](std::uint64_t v) { return std::to_string(v); };
+        std::printf("  capacity: %s sectors visible; native max LBA %s; DCO max LBA %s (hpa %s, amac %s, dco %s)\n",
+                    lba(a.user_sectors).c_str(),
+                    a.native_max ? (lba(a.native_max->max_lba) + (a.native_max->exact ? "" : " (low 24 bits)")).c_str()
+                                 : "not reported",
+                    a.dco_max_lba ? lba(*a.dco_max_lba).c_str() : "not reported", yes_no(a.hpa_supported),
+                    yes_no(a.amac_supported), yes_no(a.dco_supported));
+        if (const auto hidden = pm::hidden_area(a)) std::printf("  capacity: HIDDEN AREA, %s\n", pm::describe(*hidden).c_str());
     }
 
     std::printf("  methods (best first):\n");
