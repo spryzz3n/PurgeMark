@@ -32,11 +32,39 @@ struct AtaIdentify {
     bool sanitize_crypto = false;
     bool sanitize_block = false;
     bool sanitize_overwrite = false;
+
+    // Capacity, and the features that can hide part of it from the host.
+    bool lba48 = false;                 // word 83 bit 10
+    std::uint64_t user_sectors = 0;     // words 100-103 (or 60-61): what the host sees
+    bool hpa_supported = false;         // word 82 bit 10, Host Protected Area
+    bool dco_supported = false;         // word 83 bit 11, Device Configuration Overlay
+    bool amac_supported = false;        // word 119 bit 8, Accessible Max Address (ACS-3, replaces both)
+
+    // Filled in by probe() with extra read-only commands; empty if the drive
+    // or the path to it didn't answer.
+    struct NativeMax {
+        std::uint64_t max_lba = 0;
+        bool exact = true;  // false: only the low 24 bits came back (fixed-format sense)
+    };
+    std::optional<NativeMax> native_max;
+    std::optional<std::uint64_t> dco_max_lba;
 };
 
 using AtaIdentifyData = std::array<std::uint8_t, 512>;
 
 Result<AtaIdentify> parse_ata_identify(std::span<const std::uint8_t, 512> raw);
+
+// Sectors the drive keeps out of sight: past the visible end but below its
+// native (HPA, Accessible Max Address) or factory (DCO) maximum. Overwrite
+// can't reach them, and whether a firmware erase does is vendor-dependent.
+struct HiddenArea {
+    std::uint64_t sectors = 0;
+    bool size_known = true;  // false: a mismatch was seen but the exact native max wasn't
+    bool hpa = false;        // set by HPA or Accessible Max Address
+    bool dco = false;        // set by a DCO below the factory size
+};
+std::optional<HiddenArea> hidden_area(const AtaIdentify& id);
+std::string describe(const HiddenArea& h);
 
 // Issues IDENTIFY DEVICE through SCSI/ATA Translation (ATA PASS-THROUGH(16)) on
 // /dev/sdX. Needs root. Fails on SAS drives and on USB bridges without SAT.
@@ -63,6 +91,7 @@ struct AtaRegisters {
     // Fixed-format sense only carries the low bytes; these say what's missing.
     bool upper_bytes_known = true;
     bool count_upper_nonzero = false;
+    bool lba_upper_nonzero = false;
     bool has_error() const { return status & 0x01; }
 };
 
@@ -75,6 +104,18 @@ std::optional<AtaRegisters> parse_ata_sense(std::span<const std::uint8_t> sense)
 // an ATA-level error comes back as registers with has_error() set.
 Result<AtaRegisters> ata_passthrough(int fd, const AtaTaskfile& tf, AtaProtocol protocol,
                                      std::span<std::uint8_t> data_in, unsigned timeout_ms);
+
+// --- Native and factory capacity (read-only) --------------------------------------
+
+// GET NATIVE MAX ADDRESS EXT (Accessible Max Address), or READ NATIVE MAX
+// ADDRESS (EXT) on older drives. Returns the highest LBA the drive could expose.
+AtaTaskfile ata_native_max_taskfile(const AtaIdentify& id);
+AtaIdentify::NativeMax parse_native_max(const AtaRegisters& regs, bool extended);
+Result<AtaIdentify::NativeMax> ata_read_native_max(int fd, const AtaIdentify& id);
+
+// DEVICE CONFIGURATION IDENTIFY: the factory maximum LBA, words 3-6.
+Result<std::uint64_t> parse_dco_identify(std::span<const std::uint8_t, 512> raw);
+Result<std::uint64_t> ata_dco_max_lba(int fd);
 
 // --- SANITIZE feature set (ACS-4 7.30) ------------------------------------------
 

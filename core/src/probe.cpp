@@ -1,5 +1,8 @@
 #include "pm/probe.hpp"
 
+#include <fcntl.h>
+
+#include "fd.hpp"
 #include "pm/safety.hpp"
 
 namespace pm {
@@ -37,8 +40,19 @@ ProbeResult probe(const Device& dev) {
                 break;
             }
             const auto id = parse_ata_identify(raw.value());
-            if (id) r.ata = id.value();
-            else r.identify_error = id.error();
+            if (!id) {
+                r.identify_error = id.error();
+                break;
+            }
+            r.ata = id.value();
+            // Read-only queries for capacity the drive keeps hidden. A drive or
+            // bridge that doesn't answer leaves these empty, which hides nothing.
+            if (Fd fd(::open(dev.path.c_str(), O_RDONLY | O_NONBLOCK | O_CLOEXEC)); fd) {
+                if (auto n = ata_read_native_max(fd.get(), *r.ata)) r.ata->native_max = n.value();
+                if (r.ata->dco_supported) {
+                    if (auto d = ata_dco_max_lba(fd.get())) r.ata->dco_max_lba = d.value();
+                }
+            }
             break;
         }
         case Bus::Virtio:

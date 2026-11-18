@@ -340,6 +340,115 @@ int main() {
         CHECK(!pm::parse_ata_sanitize_status(*pm::parse_ata_sense(sense)).completed_ok);
     }
 
+    // Capacity words, and which native-max command each kind of drive gets
+    {
+        auto raw = frozen_hdd();  // a 1 TB disk: 1953525168 sectors
+        set_word(raw, 82, 1 << 10);                       // HPA supported
+        set_word(raw, 83, (1 << 10) | (1 << 11));         // 48-bit, DCO supported
+        set_word(raw, 100, 0x6DB0);
+        set_word(raw, 101, 0x7470);                       // 0x74706DB0 = 1953525168
+        const auto id = pm::parse_ata_identify(raw);
+        CHECK(id && id->lba48 && id->hpa_supported && id->dco_supported && !id->amac_supported);
+        CHECK(id && id->user_sectors == 1953525168ULL);
+        CHECK(id && pm::ata_native_max_taskfile(id.value()).command == 0x27 && pm::ata_native_max_taskfile(id.value()).extended);
+
+        set_word(raw, 119, 0x4000 | (1 << 8));            // Accessible Max Address (ACS-3)
+        CHECK(pm::ata_native_max_taskfile(pm::parse_ata_identify(raw).value()).command == 0x78);
+        set_word(raw, 119, 1 << 8);                       // word not marked valid: ignored
+        CHECK(pm::ata_native_max_taskfile(pm::parse_ata_identify(raw).value()).command == 0x27);
+
+        auto old = frozen_hdd();                          // 28-bit only
+        set_word(old, 60, 0x0000);
+        set_word(old, 61, 0x0100);                        // 16777216 sectors
+        const auto oid = pm::parse_ata_identify(old);
+        CHECK(oid && !oid->lba48 && oid->user_sectors == 16777216ULL);
+        CHECK(oid && pm::ata_native_max_taskfile(oid.value()).command == 0xF8 && !pm::ata_native_max_taskfile(oid.value()).extended);
+    }
+
+    // Native max from the returned registers
+    {
+        pm::AtaRegisters full;  // descriptor sense: all 48 bits
+        full.lba = 1953525167ULL;
+        auto n = pm::parse_native_max(full, true);
+        CHECK(n.exact && n.max_lba == 1953525167ULL);
+
+        pm::AtaRegisters fixed;  // fixed sense: low 24 bits only, upper flagged nonzero
+        fixed.upper_bytes_known = false;
+        fixed.lba_upper_nonzero = true;
+        fixed.lba = 1953525167ULL & 0xFFFFFF;
+        n = pm::parse_native_max(fixed, true);
+        CHECK(!n.exact && n.max_lba == (1953525167ULL & 0xFFFFFF));
+        fixed.lba_upper_nonzero = false;  // a small drive: nothing above bit 23
+        CHECK(pm::parse_native_max(fixed, true).exact);
+
+        pm::AtaRegisters r28;  // 28-bit: LBA 27:24 in DEVICE
+        r28.upper_bytes_known = false;
+        r28.lba = 0xFFFFFF;
+        r28.device = 0x40 | 0x0F;
+        CHECK(pm::parse_native_max(r28, false).max_lba == 0x0FFFFFFFULL);
+
+        std::array<std::uint8_t, 18> sense{};  // the flag comes from byte 8 bit 5
+        sense[0] = 0x70;
+        sense[8] = 0x20;
+        CHECK(pm::parse_ata_sense(sense)->lba_upper_nonzero);
+    }
+
+    // Hidden areas
+    {
+        pm::AtaIdentify id;
+        id.user_sectors = 1000;  // visible LBAs 0..999
+        CHECK(!pm::hidden_area(id));
+        id.native_max = pm::AtaIdentify::NativeMax{999, true};
+        CHECK(!pm::hidden_area(id));
+        id.native_max = pm::AtaIdentify::NativeMax{1999, true};
+        auto h = pm::hidden_area(id);
+        CHECK(h && h->hpa && !h->dco && h->size_known && h->sectors == 1000);
+        CHECK(h && pm::describe(*h).find("1000 sectors") != std::string::npos);
+
+        id.native_max = pm::AtaIdentify::NativeMax{999 + (1 << 24), false};  // low bits match: can't tell
+        CHECK(!pm::hidden_area(id));
+        id.native_max = pm::AtaIdentify::NativeMax{1999, false};  // low bits differ: hidden, size unknown
+        h = pm::hidden_area(id);
+        CHECK(h && h->hpa && !h->size_known && pm::describe(*h).find("unknown") != std::string::npos);
+        id.dco_max_lba = 4999;  // the factory max bounds it
+        h = pm::hidden_area(id);
+        CHECK(h && h->hpa && h->dco && h->size_known && h->sectors == 4000);
+
+        id.native_max = pm::AtaIdentify::NativeMax{999, true};  // DCO alone
+        h = pm::hidden_area(id);
+        CHECK(h && !h->hpa && h->dco && h->sectors == 4000);
+        id.dco_max_lba = 999;
+        CHECK(!pm::hidden_area(id));
+    }
+
+    // DCO IDENTIFY data
+    {
+        pm::AtaIdentifyData dco{};
+        set_word(dco, 0, 0x0002);
+        set_word(dco, 3, 0x6DAF);
+        set_word(dco, 4, 0x7470);  // max LBA 1953525167
+        CHECK(pm::parse_dco_identify(dco) && pm::parse_dco_identify(dco).value() == 1953525167ULL);
+        seal_checksum(dco);
+        CHECK(static_cast<bool>(pm::parse_dco_identify(dco)));
+        dco[10] ^= 1;
+        CHECK(!pm::parse_dco_identify(dco));
+        CHECK(!pm::parse_dco_identify(pm::AtaIdentifyData{}));
+    }
+
+    // A hidden area switches every method off, overwrite included
+    {
+        auto id = pm::parse_ata_identify(sata_ssd()).value();
+        id.user_sectors = 976773168;
+        id.native_max = pm::AtaIdentify::NativeMax{976773167 + 2048, true};
+        pm::Device dev;
+        dev.rotational = false;
+        const auto m = pm::rank_methods(dev, std::nullopt, id);
+        CHECK(!m.empty() && std::none_of(m.begin(), m.end(), [](const pm::Candidate& c) { return c.available; }));
+        CHECK(std::all_of(m.begin(), m.end(), [](const pm::Candidate& c) { return c.note.find("HPA") != std::string::npos; }));
+        id.native_max = pm::AtaIdentify::NativeMax{976773167, true};
+        CHECK(pm::rank_methods(dev, std::nullopt, id).front().available);
+    }
+
     // Garbage sense data never parses into registers
     {
         std::array<std::uint8_t, 8> junk{0x72, 0x05, 0x24, 0, 0, 0, 0, 40};  // length beyond buffer

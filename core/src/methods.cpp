@@ -207,6 +207,18 @@ std::vector<Candidate> rank_methods(const Device& dev, const std::optional<NvmeI
     std::string ow_note = ssd ? "cannot reach over-provisioned flash" : "cannot reach reallocated sectors";
     out.push_back({Method::Overwrite, {}, !dev.read_only, dev.read_only ? "device is read-only" : ow_note});
 
+    // A hidden area is out of reach for overwrite, and the standards leave it
+    // to the vendor whether firmware erases cover it, so nothing runs until
+    // the operator unhides it.
+    if (ata) {
+        if (const auto hidden = hidden_area(*ata)) {
+            for (auto& c : out) {
+                c.available = false;
+                c.note = describe(*hidden);
+            }
+        }
+    }
+
     for (auto& c : out) c.level = nominal_level(c.method, ssd);
     std::stable_partition(out.begin(), out.end(), [](const Candidate& c) { return c.available; });
     return out;
