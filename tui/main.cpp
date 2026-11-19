@@ -159,6 +159,9 @@ private:
 
     int pattern_ = 0;
     std::vector<std::string> pattern_labels_ = {"Random data (recommended)", "Zeros"};
+    int verify_scope_ = 0;
+    std::vector<std::string> verify_labels_ = {"Sample about 1000 regions (quick)",
+                                               "Whole disk (takes about as long as the overwrite)"};
     std::string operator_name_;
     std::string confirm_text_;
     std::string setup_error_;
@@ -168,6 +171,9 @@ private:
     std::atomic<bool> cancel_{false};
     std::atomic<bool> verifying_{false};
     std::chrono::steady_clock::time_point started_;
+    // When the read-back started, so a full one gets its own rate and ETA.
+    std::atomic<std::chrono::steady_clock::rep> verify_started_{0};
+    bool full_verify_running_ = false;
     std::thread worker_;
 
     std::mutex result_mu_;
@@ -304,6 +310,7 @@ private:
                 break;
             }
         }
+        verify_scope_ = 0;
         operator_name_.clear();
         confirm_text_.clear();
         setup_error_.clear();
@@ -314,11 +321,12 @@ private:
     Component setup_screen() {
         auto methods = Make<PassTab>(Choice(&method_labels_, &method_));
         auto patterns = Maybe(Make<PassTab>(Choice(&pattern_labels_, &pattern_)), &show_pattern_);
+        auto scope = Maybe(Make<PassTab>(Choice(&verify_labels_, &verify_scope_)), &show_pattern_);
         auto op = Input(&operator_name_, "optional");
         auto confirm = Input(&confirm_text_, "type the serial shown above");
         auto erase = Button(" ERASE ", [this] { start_erase(); }, ButtonOption::Simple());
         auto back = Button(" Back ", [this] { page_ = kList; }, ButtonOption::Simple());
-        auto form = Container::Vertical({methods, patterns, op, confirm, Container::Horizontal({erase, back})});
+        auto form = Container::Vertical({methods, patterns, scope, op, confirm, Container::Horizontal({erase, back})});
 
         auto view = Renderer(form, [=, this] {
             const auto* r = current();
@@ -340,7 +348,8 @@ private:
                               vbox({
                                   methods->Render(),
                                   text(how) | dim,
-                                  show_pattern_ ? vbox({separator(), text("Overwrite pattern"), patterns->Render()})
+                                  show_pattern_ ? vbox({separator(), text("Overwrite pattern"), patterns->Render(),
+                                                        separator(), text("Read back afterwards"), scope->Render()})
                                                 : text(""),
                               })),
                        window(text(" Certificate "),
@@ -406,11 +415,16 @@ private:
         job.method = method_choices_[static_cast<std::size_t>(method_)];
         job.allow_experimental = opts_.experimental;
         job.pattern = pattern_ == 0 ? pm::Pattern::Random : pm::Pattern::Zero;
+        job.full_verify = job.method == pm::Method::Overwrite && verify_scope_ == 1;
+        full_verify_running_ = job.full_verify;
         running_method_ = job.method;
         job.progress = [this](std::uint64_t done, std::uint64_t total) {
             done_ = done;
             total_ = total;
-            if (done == total) verifying_ = true;
+            if (done == total && !verifying_) {
+                verify_started_ = std::chrono::steady_clock::now().time_since_epoch().count();
+                verifying_ = true;
+            }
             screen_->PostEvent(Event::Custom);
             return !cancel_.load();
         };
@@ -461,8 +475,13 @@ private:
         auto view = Renderer([this] {
             const double done = static_cast<double>(done_.load());
             const double total = static_cast<double>(total_.load());
-            const double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() - started_).count();
-            const double rate = secs > 0 ? done / secs : 0;
+            // A full read-back starts again from zero; time it from when it began.
+            const bool reading_back = verifying_ && full_verify_running_;
+            const auto since = reading_back ? std::chrono::steady_clock::time_point(
+                                                  std::chrono::steady_clock::duration(verify_started_.load()))
+                                            : started_;
+            const double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() - since).count();
+            const double rate = secs > 0 && !(reading_back && done >= total) ? done / secs : 0;
             const long eta = rate > 0 ? static_cast<long>((total - done) / rate) : 0;
             char stats[128];
             std::snprintf(stats, sizeof stats, "%.1f%%   %s/s   ETA %ldm%02lds", 100.0 * done / total,
@@ -472,8 +491,9 @@ private:
                        header("Erasing"),
                        window(text(" " + (r ? r->device.path + "  " + or_dash(r->device.model) : "") + " "),
                               vbox({
-                                  text(verifying_ ? "Verifying: reading back sampled regions..."
-                                                  : pm::to_string(running_method_) + "..."),
+                                  text(!verifying_            ? pm::to_string(running_method_) + "..."
+                                       : full_verify_running_ ? "Verifying: reading back the whole disk..."
+                                                              : "Verifying: reading back sampled regions..."),
                                   progress_bar(static_cast<float>(done / total)) | color(Color::Cyan),
                                   text(stats),
                               })),
@@ -511,8 +531,10 @@ private:
             if (!s.error.empty()) el.push_back(text("Error         " + s.error) | color(Color::RedLight));
             if (s.completed) {
                 el.push_back(text("Verification  " + std::string(v.passed() ? "passed" : "FAILED") + ", " +
-                                  std::to_string(v.samples) + " samples, " + std::to_string(v.mismatches) +
-                                  " mismatches"));
+                                  (v.full ? std::string("whole disk read back")
+                                          : std::to_string(v.samples) + " samples (" +
+                                                pm::coverage_percent(v.bytes_checked, v.target_bytes) + " of the disk)") +
+                                  ", " + std::to_string(v.mismatches) + " mismatches"));
             }
             el.push_back(separator());
             if (!cert_path_.empty()) {

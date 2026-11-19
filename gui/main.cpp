@@ -254,6 +254,7 @@ private:
     GtkWidget* how_label_ = nullptr;
     GtkWidget* pattern_box_ = nullptr;
     GtkWidget* pattern_random_ = nullptr;
+    GtkWidget* full_verify_ = nullptr;
     GtkWidget* operator_entry_ = nullptr;
     GtkWidget* confirm_entry_ = nullptr;
     GtkWidget* erase_btn_ = nullptr;
@@ -273,6 +274,9 @@ private:
     std::atomic<bool> verifying_{false};
     std::atomic<bool> busy_{false};
     std::chrono::steady_clock::time_point started_;
+    // When the read-back started, so a full one gets its own rate and ETA.
+    std::atomic<std::chrono::steady_clock::rep> verify_started_{0};
+    bool full_verify_running_ = false;
     pm::Method running_method_ = pm::Method::Overwrite;
     std::thread worker_;
 
@@ -572,6 +576,9 @@ private:
         gtk_check_button_set_active(GTK_CHECK_BUTTON(pattern_random_), TRUE);
         append(pattern_box_, pattern_random_);
         append(pattern_box_, zeros);
+        full_verify_ = gtk_check_button_new_with_label(
+            "Read back the whole disk afterwards (takes about as long as the overwrite)");
+        append(pattern_box_, full_verify_);
         append(method, pattern_box_);
         append(setup_page_, method);
 
@@ -653,11 +660,16 @@ private:
         job.method = chosen_method();
         job.allow_experimental = opts_.experimental;
         job.pattern = gtk_check_button_get_active(GTK_CHECK_BUTTON(pattern_random_)) ? pm::Pattern::Random : pm::Pattern::Zero;
+        job.full_verify = job.method == pm::Method::Overwrite && gtk_check_button_get_active(GTK_CHECK_BUTTON(full_verify_));
+        full_verify_running_ = job.full_verify;
         running_method_ = job.method;
         job.progress = [this](std::uint64_t done, std::uint64_t total) {
             done_ = done;
             total_ = total;
-            if (done == total) verifying_ = true;
+            if (done == total && !verifying_) {
+                verify_started_ = std::chrono::steady_clock::now().time_since_epoch().count();
+                verifying_ = true;
+            }
             return !cancel_.load();
         };
 
@@ -759,16 +771,22 @@ private:
     void update_progress() {
         const double done = static_cast<double>(done_.load());
         const double total = static_cast<double>(total_.load());
-        const double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() - started_).count();
-        const double rate = secs > 0 ? done / secs : 0;
+        // A full read-back starts again from zero; time it from when it began.
+        const bool reading_back = verifying_ && full_verify_running_;
+        const auto since = reading_back ? std::chrono::steady_clock::time_point(
+                                              std::chrono::steady_clock::duration(verify_started_.load()))
+                                        : started_;
+        const double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() - since).count();
+        const double rate = secs > 0 && !(reading_back && done >= total) ? done / secs : 0;
         const long eta = rate > 0 ? static_cast<long>((total - done) / rate) : 0;
         char stats[128];
         std::snprintf(stats, sizeof stats, "%.1f%%    %s/s    about %ldm %02lds left", 100.0 * done / total,
                       human_size(static_cast<std::uint64_t>(rate)).c_str(), eta / 60, eta % 60);
         gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(progress_bar_), done / total);
         gtk_label_set_text(GTK_LABEL(progress_stats_), stats);
-        const std::string state = verifying_ ? "Verifying: reading back sampled regions..."
-                                             : pm::to_string(running_method_) + "...";
+        const std::string state = !verifying_          ? pm::to_string(running_method_) + "..."
+                                  : full_verify_running_ ? "Verifying: reading back the whole disk..."
+                                                         : "Verifying: reading back sampled regions...";
         gtk_label_set_text(GTK_LABEL(progress_state_), state.c_str());
     }
 
@@ -811,8 +829,11 @@ private:
         if (!s.error.empty()) result_row(grid, y++, "Error", s.error, "bad");
         if (s.completed) {
             result_row(grid, y++, "Verification",
-                       std::string(v.passed() ? "Passed" : "FAILED") + ", " + std::to_string(v.samples) + " samples, " +
-                           std::to_string(v.mismatches) + " mismatches",
+                       std::string(v.passed() ? "Passed" : "FAILED") + ", " +
+                           (v.full ? std::string("whole disk read back")
+                                   : std::to_string(v.samples) + " samples (" +
+                                         pm::coverage_percent(v.bytes_checked, v.target_bytes) + " of the disk)") +
+                           ", " + std::to_string(v.mismatches) + " mismatches",
                        v.passed() ? "ok" : "bad");
         }
         if (!cert_path_.empty()) {
